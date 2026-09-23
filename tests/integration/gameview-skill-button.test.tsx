@@ -766,3 +766,81 @@ describe('GameView:selectTarget 型主动技按钮', () => {
     expect(hpBtn).toBeDefined();
   });
 });
+
+// ─── 转化技回应窗口:倾国(黑牌当闪)──────────────────────────────
+// 回归根因:triggerableActions 不收 useCard+transform(倾国/看破 型转化技) → 回应窗口里
+// 没有技能按钮;且 handleTransformPlay 的回应分支只认 isKillRespondContext(被询问杀)
+// → 即便点了按钮也会走 use 路径,提交出错误的 action。AI 侧同源缺口见
+// tests/headless/availableActions.test.ts「转化技回应窗口」。
+describe('GameView:转化技回应窗口(倾国 黑牌当闪)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('被询问闪时:倾国按钮出现 → 选黑牌 → 提交 闪.respond + preceding transform', async () => {
+    const blackKill: Card = { id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const view: GameView = {
+      viewer: 0,
+      currentPlayerIndex: 1, // 别人回合:被杀指定
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+      players: [
+        {
+          index: 0, name: '甄姬', character: '甄姬', health: 3, maxHealth: 3, alive: true,
+          equipment: {}, skills: ['使用牌', '打出牌', '倾国'], handCount: 1, hand: [blackKill], marks: [],
+        },
+        {
+          index: 1, name: 'P1', character: 'P1', health: 4, maxHealth: 4, alive: true,
+          equipment: {}, skills: ['使用牌', '打出牌'], handCount: 0, marks: [],
+        },
+      ],
+      cardMap: { k1: blackKill },
+      pending: {
+        type: 'awaits',
+        atom: { type: '询问闪', target: 0, source: 1 } as never,
+        prompt: {
+          type: 'useCard',
+          title: '请打出闪',
+          cardFilter: { filter: (c: Card) => c.name === '闪', min: 1, max: 1 },
+        },
+        target: 0,
+        isBlocking: true,
+        totalMs: 50000,
+      },
+      deadline: null,
+      deadlineTotalMs: 0,
+      log: [],
+      settlementStack: [],
+    };
+    const onAction = vi.fn();
+    const { container } = render(<GameViewComponent view={view} onAction={onAction} />);
+
+    // 1. 倾国按钮出现(回应窗口激活)
+    const qgBtn = await screen.findByRole('button', { name: '倾国' });
+    await act(async () => {
+      fireEvent.click(qgBtn);
+    });
+
+    // 2. 选黑牌 k1(转化模式:黑牌可选,字面闪过滤器不拦)
+    const cardEl = container.querySelector('[data-card-id="k1"]')!;
+    expect(cardEl).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(cardEl);
+    });
+
+    // 3. 提交:主 action = 闪.respond(影子牌) + preceding 倾国.transform
+    const useBtn = await screen.findByRole('button', { name: /使用闪/ });
+    await act(async () => {
+      fireEvent.click(useBtn);
+    });
+
+    expect(onAction).toHaveBeenCalled();
+    const call = onAction.mock.calls[0][0];
+    expect(call.skillId).toBe('闪');
+    expect(call.actionType).toBe('respond');
+    expect(call.params.cardId).toBe('k1#倾国');
+    expect(call.preceding).toEqual([
+      { skillId: '倾国', actionType: 'transform', params: { cardId: 'k1' } },
+    ]);
+  });
+});

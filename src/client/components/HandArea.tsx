@@ -92,7 +92,7 @@ export function HandArea({
     distAllocations,
     distExternalCandidates,
     selectedRespondCardId,
-    isKillRespondContext,
+    isRespondTransformContext,
     handleCardClick,
   } = play;
 
@@ -175,7 +175,7 @@ export function HandArea({
             const isAwaiting = isRespondableCard(card);
             const isTransformCandidate = !!transformMode?.cardFilter(card);
             const isTransformActive =
-              transformMode !== null && canOperate && (isMyTurn || isKillRespondContext);
+              transformMode !== null && canOperate && (isMyTurn || isRespondTransformContext);
             const isTransformMatch =
               isTransformCandidate &&
               (transformMode?.minCards === 1 ||

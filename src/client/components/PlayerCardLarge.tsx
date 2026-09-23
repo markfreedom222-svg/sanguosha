@@ -102,6 +102,8 @@ export function PlayerCardLargeImpl({
       a.prompt.type === 'choosePlayer' ||
       a.prompt.type === 'selectTarget' ||
       (a.prompt.type === 'useCardAndTarget' && !!a.transform) ||
+      // useCard 型转化技(倾国黑牌当闪/看破黑牌当无懈):同样需要按钮进入转化选牌模式
+      (a.prompt.type === 'useCard' && !!a.transform) ||
       a.prompt.type === 'distribute',
   );
   // 技能按钮显隐:由 action 声明的 activeWhen 决定(缺省=出牌阶段+自己回合+无 pending)。

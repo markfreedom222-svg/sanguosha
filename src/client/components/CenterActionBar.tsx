@@ -82,7 +82,7 @@ export function CenterActionBar({
     handlePlayCard,
     handleSkillAction,
     handleTransformPlay,
-    isKillRespondContext,
+    isRespondTransformContext,
     handleRespond,
     handlePlayRespond,
     handleEndTurn,
@@ -172,7 +172,7 @@ export function CenterActionBar({
             );
           })()}
         {canOperate &&
-          (selectedActive || isKillRespondContext) &&
+          (selectedActive || isRespondTransformContext) &&
           transformMode &&
           transformMode.minCards > 1 &&
           (() => {
@@ -181,7 +181,7 @@ export function CenterActionBar({
               ids.length >= transformMode.minCards &&
               ids.length <= transformMode.maxCards;
             // 回应路径(被询问杀):打出无目标,选满牌数即可提交 杀.respond
-            const needsTarget = !isKillRespondContext && (transformMode.targetFilter
+            const needsTarget = !isRespondTransformContext && (transformMode.targetFilter
               ? transformMode.targetFilter.max >= 1
               : true);
             const canSubmit = enough && (!needsTarget || !!selectedTarget);
@@ -212,12 +212,12 @@ export function CenterActionBar({
             );
           })()}
         {canOperate &&
-          (selectedActive || isKillRespondContext) &&
+          (selectedActive || isRespondTransformContext) &&
           transformMode?.minCards === 1 &&
           selectedCardId &&
           (() => {
             // 回应路径(被询问杀):无需选目标,选中红牌即可提交 杀.respond
-            if (isKillRespondContext) {
+            if (isRespondTransformContext) {
               return (
                 <button
                   className={styles.playBtn}

@@ -1322,3 +1322,143 @@ describe('主动技枚举 → 引擎执行', () => {
     expect(state.players[0].hand).toEqual(expect.arrayContaining(['d1', 'd2'])); // 摸两张
   });
 });
+
+// ─── 转化技回应窗口(询问闪/询问杀/广播无懈)────────────────────
+// 回归根因:enumerateTransformActions 的回应分支只认「被询问杀」(询问杀 /
+// 请求回应 杀/respondKill),且要求转化后牌名 === '杀',还只接受 useCardAndTarget 型 prompt
+// → 倾国(黑牌当闪,useCard prompt)/龙胆(杀当闪)/看破(黑牌当无懈)在各自回应窗口里
+// 拿不到任何动作,AI 只能 skip(核心防御技整类失效)。
+describe('enumerateAvailableActions:转化技回应窗口', () => {
+  // 倾国:黑牌当闪(useCard prompt + transform)。镜像 engine/skills/倾国.ts onMount。
+  const qingguoTransform: SkillActionDef = {
+    skillId: '倾国',
+    ownerId: 0,
+    actionType: 'transform',
+    label: '倾国',
+    prompt: {
+      type: 'useCard',
+      title: '倾国:将一张黑色手牌当闪使用或打出',
+      cardFilter: { filter: (c: Card) => c.color === '黑', min: 1, max: 1 },
+    },
+    transform: (c: Card) => ({ name: '闪', sourceCardId: c.id, fromSkill: '倾国' }),
+    activeWhen: (ctx) => {
+      const slot = ctx.view.pending;
+      if (!slot) return false;
+      if ((slot.atom as { type: string }).type !== '询问闪') return false;
+      if (slot.target !== ctx.perspectiveIdx) return false;
+      const p = ctx.view.players[ctx.perspectiveIdx];
+      return p?.hand?.some((c) => c.color === '黑') ?? false;
+    },
+  };
+
+  // 龙胆:杀当闪(useCardAndTarget prompt + transform)。镜像 engine/skills/龙胆.ts。
+  const longdanTransform: SkillActionDef = {
+    skillId: '龙胆',
+    ownerId: 0,
+    actionType: 'transform',
+    label: '龙胆',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '龙胆:将一张杀当闪使用或打出',
+      cardFilter: { filter: (c: Card) => c.name === '杀', min: 1, max: 1 },
+      targetFilter: { min: 1, max: 1 },
+    },
+    transform: (c: Card) => ({ name: '闪', sourceCardId: c.id, fromSkill: '龙胆' }),
+    activeWhen: (ctx) => {
+      const slot = ctx.view.pending;
+      if (!slot) return false;
+      if ((slot.atom as { type: string }).type !== '询问闪') return false;
+      if (slot.target !== ctx.perspectiveIdx) return false;
+      const p = ctx.view.players[ctx.perspectiveIdx];
+      return p?.hand?.some((c) => c.name === '杀') ?? false;
+    },
+  };
+
+  /** 被杀指定 → 询问闪 的 view(手牌由调用方给)。 */
+  function dodgeView(hand: Card[]): GameView {
+    const view = makeView(0, '出牌', hand, 1);
+    view.pending = {
+      type: 'awaits',
+      atom: { type: '询问闪', target: 0, source: 1 } as never,
+      prompt: {
+        type: 'useCard',
+        title: '请打出闪',
+        cardFilter: { filter: (c: Card) => c.name === '闪', min: 1, max: 1 },
+      },
+      target: 0,
+      isBlocking: true,
+      totalMs: 50000,
+    };
+    return view;
+  }
+
+  it('询问闪 + 倾国(黑牌当闪) → 生成 闪.respond + preceding transform', () => {
+    const black: Card = { id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const actions = enumerateAvailableActions(dodgeView([black]), 0, [qingguoTransform]);
+    const resp = actions.filter((a) => a.message.actionType === 'respond');
+    expect(resp).toHaveLength(1);
+    expect(resp[0].message.skillId).toBe('闪');
+    expect(resp[0].message.params.cardId).toBe('k1#倾国');
+    expect(resp[0].message.preceding).toEqual([
+      { skillId: '倾国', actionType: 'transform', params: { cardId: 'k1' } },
+    ]);
+  });
+
+  it('询问闪 + 龙胆(杀当闪) → 同样生成 闪.respond(useCardAndTarget 型转化)', () => {
+    const kill: Card = { id: 'k2', name: '杀', suit: '♥', color: '红', rank: '5', type: '基本牌' };
+    const actions = enumerateAvailableActions(dodgeView([kill]), 0, [longdanTransform]);
+    const resp = actions.filter((a) => a.message.actionType === 'respond');
+    expect(resp).toHaveLength(1);
+    expect(resp[0].message.skillId).toBe('闪');
+    expect(resp[0].message.params.cardId).toBe('k2#龙胆');
+  });
+
+  it('询问闪 + 手中无黑牌(倾国 inactive) → 不生成转化回应', () => {
+    const red: Card = { id: 'r1', name: '闪', suit: '♥', color: '红', rank: '3', type: '基本牌' };
+    const actions = enumerateAvailableActions(dodgeView([red]), 0, [qingguoTransform]);
+    expect(actions.filter((a) => a.message.actionType === 'respond')).toHaveLength(0);
+  });
+
+  it('回归:询问杀 + 武圣(红牌当杀)仍生成 杀.respond(泛化未破坏原路径)', () => {
+    const red: Card = { id: 'c1', name: '闪', suit: '♥', color: '红', rank: 'A', type: '基本牌' };
+    const view = makeView(0, '出牌', [red], 1);
+    view.pending = {
+      type: 'awaits',
+      atom: { type: '询问杀', target: 0, source: 1 } as never,
+      prompt: {
+        type: 'useCard',
+        title: '请打出杀',
+        cardFilter: { filter: (c: Card) => c.name === '杀', min: 1, max: 1 },
+      },
+      target: 0,
+      isBlocking: true,
+      totalMs: 50000,
+    };
+    const wusheng: SkillActionDef = {
+      skillId: '武圣',
+      ownerId: 0,
+      actionType: 'transform',
+      label: '武圣',
+      prompt: {
+        type: 'useCardAndTarget',
+        title: '武圣:将一张红色牌当杀使用或打出',
+        cardFilter: { filter: (c: Card) => c.color === '红', min: 1, max: 1 },
+        targetFilter: { min: 1, max: 1 },
+      },
+      transform: (c: Card) => ({ name: '杀', sourceCardId: c.id, fromSkill: '武圣' }),
+      activeWhen: (ctx) => {
+        const slot = ctx.view.pending;
+        if (!slot) return false;
+        if ((slot.atom as { type: string }).type !== '询问杀') return false;
+        if (slot.target !== ctx.perspectiveIdx) return false;
+        const p = ctx.view.players[ctx.perspectiveIdx];
+        return p?.hand?.some((c) => c.color === '红') ?? false;
+      },
+    };
+    const actions = enumerateAvailableActions(view, 0, [wusheng]);
+    const resp = actions.filter((a) => a.message.actionType === 'respond');
+    expect(resp).toHaveLength(1);
+    expect(resp[0].message.skillId).toBe('杀');
+    expect(resp[0].message.params.cardId).toBe('c1#武圣');
+  });
+});

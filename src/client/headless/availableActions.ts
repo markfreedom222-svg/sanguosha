@@ -129,23 +129,38 @@ function enumerateTransformActions(
   if (!me?.hand) return [];
   const result: AvailableAction[] = [];
 
-  // 回应路径(被询问杀:南蛮入侵/决斗):转化技当杀打出 → 主 action=杀.respond(无目标)
+  // 回应路径(被要求打出某牌):转化技"当该牌打出" → 主 action=<请求牌名>.respond(无目标)。
+  // 请求牌名:询问X → X(询问杀/询问闪);请求回应 'R/...' → R(杀/respondKill、无懈可击…)。
+  // 广播型(target<0,如无懈可击)对所有存活座次开放。
+  // 此前只认 杀(询问杀 / 请求回应 杀/respondKill)→ 倾国(黑牌当闪)/龙胆(杀当闪)/
+  // 看破(黑牌当无懈)在各自的回应窗口里拿不到任何动作,只能 skip。
   const pendingSlot = view.pending;
   const pendingAtomType = (pendingSlot?.atom as { type?: string })?.type;
   const pendingReqType = (pendingSlot?.atom as { requestType?: string })?.requestType;
-  const isKillRespondCtx =
-    !!pendingSlot &&
-    pendingSlot.target === seatIndex &&
-    (pendingAtomType === '询问杀' ||
-      (pendingAtomType === '请求回应' && pendingReqType === '杀/respondKill'));
+  const pendingRequestedName = (() => {
+    if (!pendingSlot) return null;
+    if (pendingSlot.target !== seatIndex && pendingSlot.target >= 0) return null;
+    if (pendingAtomType?.startsWith('询问')) return pendingAtomType.slice(2) || null;
+    if (pendingAtomType === '请求回应' && pendingReqType) {
+      const sep = pendingReqType.search(/[/_]/);
+      return (sep >= 0 ? pendingReqType.slice(0, sep) : pendingReqType) || null;
+    }
+    return null;
+  })();
+  const isRespondCtx = pendingRequestedName !== null;
 
   for (const action of skillActions) {
     if (action.actionType !== 'transform') continue;
     if (!isActiveAction(action, ctx)) continue;
     const filter = extractCardFilter(action.prompt);
     if (!filter) continue;
-    // cardFilter min/max 来自 prompt(transform 的 prompt 一定是 useCardAndTarget)
-    const cardFilter = action.prompt.type === 'useCardAndTarget' ? action.prompt.cardFilter : null;
+    // cardFilter min/max 来自 prompt:useCardAndTarget(武圣/丈八蛇矛/龙胆)与
+    // useCard(倾国/看破/酒池)两种 prompt 都带 cardFilter。
+    // 此前只认 useCardAndTarget → useCard 型转化技(倾国当闪/看破当无懈)完全枚举不到。
+    const cardFilter =
+      action.prompt.type === 'useCardAndTarget' || action.prompt.type === 'useCard'
+        ? action.prompt.cardFilter
+        : null;
     if (!cardFilter) continue;
     const minCards = cardFilter.min ?? 1;
 
@@ -203,17 +218,17 @@ function enumerateTransformActions(
     // 单卡转化(武圣/龙胆):每张匹配牌生成一个 action
     const matchingCards = me.hand.filter(filter);
 
-    // 回应路径(被询问杀):转化杀打出,无目标,主 action=杀.respond
-    if (isKillRespondCtx) {
+    // 回应路径:转化后按请求牌名打出,无目标,主 action=<请求牌名>.respond
+    if (isRespondCtx) {
       for (const card of matchingCards) {
         const wrapperName = action.transform ? action.transform(card).name : '杀';
-        if (wrapperName !== '杀') continue; // 仅杀回应
+        if (wrapperName !== pendingRequestedName) continue; // 仅转化后牌名 = 请求牌名时可用
         const shadowCardId = `${card.id}#${action.skillId}`;
         const cardDesc = `${card.suit}${card.rank}`;
         result.push({
-          description: `${action.skillId}转化【杀】(${cardDesc})打出`,
+          description: `${action.skillId}转化【${wrapperName}】(${cardDesc})打出`,
           message: {
-            skillId: '杀',
+            skillId: wrapperName,
             actionType: 'respond',
             ownerId: seatIndex,
             params: { cardId: shadowCardId },

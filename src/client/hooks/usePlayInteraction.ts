@@ -22,7 +22,7 @@ import type {
   TargetFilter,
 } from '../../engine/types';
 import type { SkillActionDef } from '../skillActionRegistry';
-import type { PendingRespondInfo } from '../utils/pendingRespond';
+import { getPendingRequestType, type PendingRespondInfo } from '../utils/pendingRespond';
 
 import {
   buildPlayParams,
@@ -161,7 +161,9 @@ export interface PlayInteractionResult {
   selectedActive: boolean;
   playButtonState: { canPlay: boolean; targetLabel: string } | null;
   /** 被询问杀(南蛮/决斗)时的回应上下文:转化技当杀打出走此路径 */
-  isKillRespondContext: boolean;
+  /** 转化技回应上下文:pending 请求的牌名 = 转化后牌名(杀/闪/无懈可击 等)。
+   *  转化技按钮据此在回应窗口激活,提交走 <请求牌名>.respond + preceding transform。 */
+  isRespondTransformContext: boolean;
   /** useCard 类回应选中的牌 id(点牌选中,再点「打出」出牌);非回应窗口为 null */
   selectedRespondCardId: string | null;
   /** useCardAndTarget 类回应(借刀杀人/出杀)选中的目标座次 name;非此模式为 null */
@@ -248,16 +250,30 @@ export function usePlayInteraction(
 
   const isMyAwaiting = isPerspectiveAwaiting && canOperate;
 
-  // 被询问杀(南蛮入侵/决斗/激将/挑衅)时的回应上下文:转化技(武圣)当杀打出走此路径。
-  // 与 isMyAwaiting 区别:仅针对"出杀"问询(询问杀 / 请求回应 杀/respondKill)。
+  // 回应窗口请求的牌名:询问X → X(询问杀/询问闪);请求回应 'R/...' → R(杀/respondKill、
+  // 无懈可击、闪、桃/求桃…)。转化技(武圣/丈八蛇矛/龙胆/倾国/看破)在该窗口下可"当 R 打出"。
   const pendingAtom = pending?.atom as { type?: string; requestType?: string } | undefined;
-  const isKillRespondContext =
-    isMyAwaiting &&
+  const pendingRequestedName = (() => {
+    if (!isMyAwaiting || !pending) return null;
+    const t = pendingAtom?.type ?? '';
+    if (t.startsWith('询问')) return t.slice(2) || null;
+    if (t === '请求回应') {
+      const rt = getPendingRequestType(pending);
+      if (!rt) return null;
+      const sep = rt.search(/[/_]/);
+      return (sep >= 0 ? rt.slice(0, sep) : rt) || null;
+    }
+    return null;
+  })();
+
+  /** 转化技回应上下文:当前 pending 请求的牌名与转化后的牌名一致 → 转化牌走 R.respond 路径。
+   *  覆盖 杀(武圣/丈八蛇矛/龙胆/界龙胆:南蛮/决斗/激将)、闪(倾国/龙胆:被杀指定)、
+   *  无懈可击(看破:广播窗口)等所有"被要求打出某牌"的窗口。
+   *  此前只认 杀(询问杀 / 请求回应 杀/respondKill)→ 倾国/看破/龙胆的闪侧整类无法回应。 */
+  const isRespondTransformContext =
+    pendingRequestedName !== null &&
     !!pending &&
-    pending.target === perspectiveIdx &&
-    (!!pendingAtom &&
-      (pendingAtom.type === '询问杀' ||
-        (pendingAtom.type === '请求回应' && pendingAtom.requestType === '杀/respondKill')));
+    (pending.target === perspectiveIdx || pending.target < 0);
 
   // ─── 状态 ───
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -825,6 +841,29 @@ export function usePlayInteraction(
 
       switch (prompt.type) {
         case 'useCard':
+          // 转化技(倾国黑牌当闪/看破黑牌当无懈):进入转化选牌模式,而非直接提交 cardId——
+          // 主 action 是转化后的牌名(闪/无懈可击),牌面由影子卡承载。
+          if (action.transform) {
+            const minCards = prompt.cardFilter.min ?? 1;
+            const maxCards = prompt.cardFilter.max ?? 1;
+            const filter = prompt.cardFilter.filter;
+            // wrapperName 由 transform 对一张代表性匹配牌求值(无匹配牌时用技能名兜底)
+            const sample = filter
+              ? perspectiveHand.find((c) => filter(c))
+              : perspectiveHand[0];
+            setTransformMode({
+              skillId,
+              actionType,
+              cardFilter: filter ?? (() => true),
+              wrapperName: sample ? action.transform(sample).name : skillId,
+              minCards,
+              maxCards,
+              selectedCardIds: [],
+            });
+            setSelectedCardId(null);
+            setSelectedTarget(null);
+            return;
+          }
           if (!selectedCardId) return;
           params.cardId = selectedCardId;
           params.cardIds = [selectedCardId];
@@ -901,8 +940,9 @@ export function usePlayInteraction(
   const handleTransformPlay = useCallback(
     (targetName: string) => {
       if (!transformMode) return;
-      // 回应路径(被询问杀):转化杀打出,无目标,主 action=杀.respond
-      if (isKillRespondContext) {
+      // 回应路径(被要求打出某牌):转化后按 R.respond 打出,无目标
+      // (询问杀→武圣/丈八蛇矛;询问闪→倾国/龙胆;广播无懈→看破)
+      if (isRespondTransformContext && transformMode.wrapperName === pendingRequestedName) {
         if (transformMode.minCards > 1) {
           // 多卡转化(丈八蛇矛):2 张手牌当杀打出
           const ids = transformMode.selectedCardIds;
@@ -983,7 +1023,15 @@ export function usePlayInteraction(
       setSelectedCardId(null);
       setSelectedTarget(null);
     },
-    [transformMode, isKillRespondContext, nameToIndex, selectedCardId, perspectiveHand, send],
+    [
+      transformMode,
+      isRespondTransformContext,
+      pendingRequestedName,
+      nameToIndex,
+      selectedCardId,
+      perspectiveHand,
+      send,
+    ],
   );
 
   const handleRespond = useCallback(
@@ -1077,7 +1125,9 @@ export function usePlayInteraction(
       if (transformMode) return;
       // 回应窗口
       if (isMyAwaiting) {
-        if (isKillRespondContext) return; // 转化杀路径留在转化模式,双击不接
+        // 转化回应路径(询问杀/闪/无懈)的拦截由上方 `if (transformMode) return` 承担:
+      // 只有已进入转化选牌模式时双击才让位;字面可回应牌(如询问闪手中的闪)双击仍应直接打出,
+      // 非匹配牌由下方 cardFilter 拦截。
         if (!pendingRespondInfo?.cardFilter?.(card)) return;
         if (respondNeedsTarget) {
           setSelectedRespondCardId(card.id);
@@ -1126,7 +1176,7 @@ export function usePlayInteraction(
       isPerspectiveAwaiting,
       transformMode,
       isMyAwaiting,
-      isKillRespondContext,
+      isRespondTransformContext,
       pendingRespondInfo,
       respondNeedsTarget,
       handleRespond,
@@ -1156,7 +1206,7 @@ export function usePlayInteraction(
         return;
       }
       // 转化模式(优先于回应拦截:玩家主动进入转化模式,包括被询问杀时武圣转化杀打出)
-      if (transformMode && canOperate && (isMyTurn || isKillRespondContext)) {
+      if (transformMode && canOperate && (isMyTurn || isRespondTransformContext)) {
         if (!transformMode.cardFilter(card)) return;
         if (transformMode.minCards > 1) {
           setSelectedCardId(null);
@@ -1211,7 +1261,7 @@ export function usePlayInteraction(
       isPerspectiveAwaiting,
       canOperate,
       discardMax,
-      isKillRespondContext,
+      isRespondTransformContext,
       isMyAwaiting,
       pendingRespondInfo,
       transformMode,
@@ -1369,7 +1419,7 @@ export function usePlayInteraction(
         : [];
     const enough = ids.length >= transformMode.minCards && ids.length <= transformMode.maxCards;
     const needsTarget =
-      !isKillRespondContext &&
+      !isRespondTransformContext &&
       (transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true);
     const canSubmit = enough && (!needsTarget || !!selectedTarget);
     return { needsTarget, canSubmit };
@@ -1422,7 +1472,7 @@ export function usePlayInteraction(
     playRules,
     selectedActive,
     playButtonState,
-    isKillRespondContext,
+    isRespondTransformContext,
     selectedRespondCardId,
     respondTargetName,
     respondNeedsTarget,

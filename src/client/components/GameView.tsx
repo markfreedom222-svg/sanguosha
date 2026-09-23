@@ -297,7 +297,7 @@ export function GameViewComponentImpl({
     handlePlayCard,
     handleTargetClick,
     handleSkillAction,
-    isKillRespondContext,
+    isRespondTransformContext,
     handleRespond,
     handlePlayRespond,
     handleEndTurn,
@@ -406,7 +406,7 @@ export function GameViewComponentImpl({
       if (!player.alive) return { distance, reason: '已阵亡' };
       if (isTargetable(idx)) return { distance, reason: null };
       if (idx === perspectiveIdx) return { distance, reason: '不能选择自己' };
-      if (selectedCard?.name === '杀' || isKillRespondContext) {
+      if (selectedCard?.name === '杀' || isRespondTransformContext) {
         const range = view.players[perspectiveIdx]?.distanceVars?.attackRange ?? 1;
         if (distance > range) {
           return { distance, reason: `距离 ${distance}，超出攻击范围 ${range}` };
@@ -414,7 +414,7 @@ export function GameViewComponentImpl({
       }
       return { distance, reason: '不满足目标条件' };
     },
-    [view, perspectiveIdx, isTargetable, selectedCard, isKillRespondContext],
+    [view, perspectiveIdx, isTargetable, selectedCard, isRespondTransformContext],
   );
 
   // ─── stabilized callbacks（引用稳定，避免子组件 memo 失效） ───
@@ -556,7 +556,7 @@ export function GameViewComponentImpl({
                   const card = perspectiveHand[n === 0 ? 9 : n - 1];
                   if (!card) return;
                   const inFreePlay = isMyTurn && view.phase === '出牌' && !pending;
-                  const transformActive = !!transformMode && (isMyTurn || isKillRespondContext);
+                  const transformActive = !!transformMode && (isMyTurn || isRespondTransformContext);
                   if (
                     (inFreePlay && canPlayHandCard(card)) ||
                     isRespondableCard(card) ||
