@@ -17,6 +17,7 @@ import type {
   Skill,
 } from '../types';
 import { applyAtom } from '../core/apply';
+import { obtainJudgeZoneCard } from '../core/judge-zone';
 import { registerAction, registerAfterHook } from '../core/skill';
 
 const CONFIRM_RT = '行殇/confirm';
@@ -121,12 +122,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
           player: deadIdx,
           trickName,
         });
-        await applyAtom(ctx.state, {
-          type: '获得',
-          player: ownerId,
-          cardId,
-          from: deadIdx,
-        });
+        // 判定区只持牌面快照,实体牌在使用时已入弃牌堆:按实体牌实际归属转移
+        // (在弃牌堆则从弃牌堆移入发动者手牌),直接 获得 会让同一张牌同时存在于
+        // 弃牌堆与手牌(牌唯一归属不变量)。
+        await obtainJudgeZoneCard(ctx.state, deadIdx, cardId, ownerId);
       }
 
       // 不 cancel:让 系统处理牌 apply 正常执行(alive=false + hand/equip 已空,no-op card loop)

@@ -30,6 +30,7 @@
 import type { FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply';
 import { setChain } from '../flows/face-down';
+import { locateCard } from '../core/judge-zone';
 import { registerAction, registerAfterHook } from '../core/skill';
 
 const CONFIRM_RT = '界涅槃/confirm';
@@ -126,9 +127,13 @@ export function onInit(skill: Skill, state: GameState): () => void {
     for (const { trickName } of judgeTricks) {
       await applyAtom(ctx.state, { type: '移除延时锦囊', player: ownerId, trickName });
     }
-    // 统一弃置:弃置.apply 过滤手牌+装备并 push 全部 cardIds 到弃牌堆
-    // (判定区牌已不在 hand/equip,filter 为 no-op,但仍被 push 入弃牌堆)
-    const allCardIds = [...handCards, ...equipCards, ...judgeTricks.map((t) => t.cardId)];
+    // 统一弃置:弃置.apply 过滤手牌+装备并 push 全部 cardIds 到弃牌堆。
+    // 判定区只持牌面快照,其实体牌在使用时已入弃牌堆 → 仅补入「不在任何区」的快照牌,
+    // 否则同一张牌会在弃牌堆出现两次(重洗后同牌两个实例)。
+    const orphanJudgeCards = judgeTricks
+      .map((t) => t.cardId)
+      .filter((id) => locateCard(ctx.state, id) === null);
+    const allCardIds = [...handCards, ...equipCards, ...orphanJudgeCards];
     if (allCardIds.length > 0) {
       await applyAtom(ctx.state, { type: '弃置', player: ownerId, cardIds: allCardIds });
     }

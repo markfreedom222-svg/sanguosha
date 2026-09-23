@@ -14,6 +14,7 @@
 // (可能被过滤后的)prompt.equipment 重算默认选择,避免超时 fallback 命中受保护装备。
 import type { ActionLogEntry, GameState, Json } from '../types';
 import { applyAtom } from '../core/apply';
+import { discardJudgeZoneCard, obtainJudgeZoneCard } from '../core/judge-zone';
 import { PICK_RESULT_KEY, getPickResult } from '../rules/vars-keys';
 
 /** 在 actionLog 中当前(最后一条)条目之前插入一条"设置手牌顺序"条目。
@@ -175,10 +176,12 @@ export async function runPickTargetCardPanel(
     const trick = targetPlayer.pendingTricks.find((t) => t.card.id === cardId);
     if (trick) {
       await applyAtom(state, { type: '移除延时锦囊', player: target, trickName: trick.name });
+      // 判定区只持牌面快照,实体牌在使用时已入弃牌堆:按实体牌实际归属处置,
+      // 不能直接 获得/弃置(会让同一张牌同时存在于弃牌堆与手牌,或弃牌堆出现两次)。
       if (obtain) {
-        await applyAtom(state, { type: '获得', player: from, cardId, from: target });
+        await obtainJudgeZoneCard(state, target, cardId, from);
       } else {
-        await applyAtom(state, { type: '弃置', player: target, cardIds: [cardId] });
+        await discardJudgeZoneCard(state, target, cardId);
       }
     }
   } else {

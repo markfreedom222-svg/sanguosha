@@ -16,6 +16,7 @@
 // 编排函数/测试可从 state.atomHistory 观察时序。
 import type { AtomDefinition, GameState, ViewEventSplit, ViewEvent } from '../types';
 import { getBeforeHooks } from '../core/skill';
+import { locateCard } from '../core/judge-zone';
 
 /** 死亡时机 atom 的公共形状(含可选 killer)。 */
 type DeathTimingAtom = { player: number; killer?: number };
@@ -120,20 +121,29 @@ export const 系统处理牌: AtomDefinition<{ player: number }> = {
         delete p.equipment[slot];
       }
     }
-    // 判定区延时锦囊(乐不思蜀/兵粮寸断/闪电等)一并弃置。
+    // 判定区延时锦囊(乐不思蜀/兵粮寸断/闪电)一并弃置。
     // 注:闪电判定生效时有独立的「传递给下家」规则(由 闪电.ts 的判定效果处理),
     // 此处是死亡清理——死亡角色已无下家可传,统一弃置。
+    // 实体牌在使用时已入弃牌堆(判定区只持牌面快照),重复入堆会让同一张牌在弃牌堆
+    // 出现两次(重洗后同牌两个实例);仅当牌不在任何区时才补入。
     for (const trick of p.pendingTricks) {
-      state.zones.discardPile.push(trick.card.id);
+      if (locateCard(state, trick.card.id) === null) {
+        state.zones.discardPile.push(trick.card.id);
+      }
     }
     p.pendingTricks = [];
   },
   effect: { animation: 'fade', duration: 1500 },
   toViewEvents(state, atom): ViewEventSplit {
     const character = state.players[atom.player]?.character;
+    // 判定区快照中实体牌已不在场的张数(= apply 实际入堆的张数),供 applyView 同步计数。
+    const trickDiscardCount = (state.players[atom.player]?.pendingTricks ?? []).filter(
+      (t) => locateCard(state, t.card.id) === null,
+    ).length;
     const view: ViewEvent = {
       type: '系统处理牌',
       player: atom.player,
+      trickDiscardCount,
       // 按武将名播报专属死亡语音(无对应文件时 audioEngine 静默跳过)
       ...(character ? { effect: { sound: `death/${character}` } as const } : {}),
     };
@@ -143,10 +153,13 @@ export const 系统处理牌: AtomDefinition<{ player: number }> = {
     const pi = view.players.findIndex((p) => p.index === (event.player as number));
     if (pi >= 0) {
       const p = view.players[pi];
-      // 弃牌堆计数:手牌数 + 装备数 + 判定区延时锦囊数(与 apply 对称)
+      // 弃牌堆计数:手牌数 + 装备数 + 判定区延时锦囊实际入堆数(与 apply 对称)
       const handCount = p.handCount;
       const equipCount = Object.values(p.equipment).filter(Boolean).length;
-      const trickCount = p.pendingTricks?.length ?? 0;
+      const trickCount =
+        typeof event.trickDiscardCount === 'number'
+          ? event.trickDiscardCount
+          : (p.pendingTricks?.length ?? 0);
       if (view.zones) {
         view.zones.discardPileCount += handCount + equipCount + trickCount;
       }
