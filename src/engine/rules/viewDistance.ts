@@ -18,6 +18,10 @@ import {
   JIANGCHI_CHOICE2_VIEW_KEY,
   GONGQI_ACTIVE_VIEW_KEY,
   DANGXIAN_NO_RANGE_VIEW_KEY,
+  TIANYI_WIN_VIEW_KEY,
+  JUEYAN_MOUNT_VIEW_KEY,
+  WANGLIE_FIRST_VIEW_KEY,
+  XIONGLUAN_TARGET_VIEW_KEY,
   slashExtraKey,
 } from './vars-keys';
 
@@ -52,6 +56,11 @@ export function viewEffectiveDistance(
   // 前端 filter 无法感知选中卡的花色,保持宽松(成略激活时一律放行);
   // 后端 distance.ts 的 DistanceExemptor 按 cardId 花色严格校验(仅同花色放行)。
   if (players[fromIdx]?.turnUsage?.[CHENGLUE_SUITS_VIEW_KEY]) return 1;
+  // 决堰(坐骑栏)/往烈(本回合首张牌):本回合使用牌无距离限制 → 距离视为 1。
+  if (players[fromIdx]?.turnUsage?.[JUEYAN_MOUNT_VIEW_KEY]) return 1;
+  if (players[fromIdx]?.turnUsage?.[WANGLIE_FIRST_VIEW_KEY]) return 1;
+  // 雄乱:本回合对其使用牌无距离限制(值=目标座次)。
+  if (players[fromIdx]?.turnUsage?.[XIONGLUAN_TARGET_VIEW_KEY] === toIdx) return 1;
   let dist = viewSeatDistance(players, fromIdx, toIdx);
   const fromP = players[fromIdx];
   const toP = players[toIdx];
@@ -74,6 +83,8 @@ export function viewCanAttack(
   // 界陷阵(界高顺):拼点赢后本回合对 winTarget 使用牌无距离限制。
   // turnUsage 由 回合用量 atom 同步;winTarget 存目标座次。
   if (players.some((p) => p.turnUsage?.[XIANZHEN_WIN_TARGET_VIEW_KEY] === toIdx)) return true;
+  // 天义:拼点赢后本回合攻击范围无限(值=发起者座次)。仅覆盖杀(攻击范围豁免)。
+  if (players[fromIdx]?.turnUsage?.[TIANYI_WIN_VIEW_KEY] === fromIdx) return true;
   // 诈降(界黄盖):失去体力后本回合【红色杀】无距离限制。turnUsage 由回合用量 atom 同步。
   // 前端 filter 无法感知当前选中的卡色(签名只收 view/target),这里保持宽松——
   // 诈降激活时一律放行(UI 提示);后端 杀.validate 按卡色严格校验(仅红杀放行)。

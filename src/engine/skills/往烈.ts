@@ -25,10 +25,16 @@ import type { Card, FrontendAPI, GameState, HookResult, Json, Skill } from '../t
 import { applyAtom } from '../core/apply';
 import { registerAction, registerAfterHook, registerBeforeHook } from '../core/skill';
 import { registerDistanceExemptor } from '../rules/distance';
+import { WANGLIE_FIRST_VIEW_KEY } from '../rules/vars-keys';
 import type { SkillModule } from '../types';
 
 /** turn.vars:本回合首张牌是否已使用(首张牌无距离限制的开关)。 */
 const FIRST_USED_VAR = '往烈/首张已用';
+/** turn.vars + view:本回合首张牌尚未使用(=无距离限制生效)。
+ *  state 侧真相是 FIRST_USED_VAR 的反面,view 侧需要一个「正向」键才能表达
+ *  (前端 viewEffectiveDistance 读 turnUsage[WANGLIE_FIRST_VIEW_KEY]),
+ *  故在出牌阶段开始投影 true、首张牌用出后投影 false。 */
+const FIRST_VIEW_VAR = WANGLIE_FIRST_VIEW_KEY;
 /** turn.vars:发动不可响应后,本阶段不能再使用牌(值为被禁玩家座次)。 */
 const BAN_VAR = '往烈/禁出牌';
 /** localVars:当前不可响应的牌 id(使用结算结束后清除)。 */
@@ -95,6 +101,23 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
     },
   );
 
+  // ─── 阶段开始(出牌)after-hook:投影「首张牌无距离限制」到 view ───
+  //  state 侧由 FIRST_USED_VAR 的反面表达;前端 viewEffectiveDistance 需要正向键,
+  //  否则本回合首张牌的距离豁免在 UI 中不可见(超出范围的目标选不中)。
+  registerAfterHook(state, skill.id, ownerId, '阶段开始', async (ctx) => {
+    const atom = ctx.atom;
+    if (atom.type !== '阶段开始') return;
+    if (atom.phase !== '出牌') return;
+    if (atom.player !== ownerId) return;
+    if (ctx.state.turn.vars[FIRST_USED_VAR]) return;
+    await applyAtom(ctx.state, {
+      type: '回合用量',
+      player: ownerId,
+      key: FIRST_VIEW_VAR,
+      value: true,
+    });
+  });
+
   // ─── 使用时 after-hook:首张牌标记 + 询问是否发动不可响应 ───
   registerAfterHook(state, skill.id, ownerId, '使用时', async (ctx) => {
     const atom = ctx.atom;
@@ -103,8 +126,14 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
     if (ctx.state.currentPlayerIndex !== ownerId) return;
     if (ctx.state.phase !== '出牌') return;
 
-    // ① 标记首张牌已用(所有牌类型均计数)
+    // ① 标记首张牌已用(所有牌类型均计数)+ 同步 view:首张牌用出后无距离限制失效
     ctx.state.turn.vars[FIRST_USED_VAR] = true;
+    await applyAtom(ctx.state, {
+      type: '回合用量',
+      player: ownerId,
+      key: FIRST_VIEW_VAR,
+      value: false,
+    });
 
     // ② 仅基本牌/普通锦囊可发动不可响应
     const card = ctx.state.cardMap[atom.cardId];

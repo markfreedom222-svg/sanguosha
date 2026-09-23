@@ -108,6 +108,37 @@ export const JIANGCHI_CHOICE2_VIEW_KEY = '将驰/choice2';
 export const GONGQI_ACTIVE_VIEW_KEY = '界弓骑/active';
 /** 额外出牌阶段获得的杀无距离限制。写:界当先(NORANGE_ACTIVE_KEY 别名);读:viewDistance。 */
 export const DANGXIAN_NO_RANGE_VIEW_KEY = '当先/noRangeActive';
+/** 拼点赢后本回合攻击范围无限(值=发起者座次)。写:天义;读:viewDistance。 */
+export const TIANYI_WIN_VIEW_KEY = '天义/win';
+/** 本回合使用牌无距离限制(值=true)。写:决堰(坐骑栏);读:viewDistance。 */
+export const JUEYAN_MOUNT_VIEW_KEY = '决堰/本回合:坐骑';
+/** 本回合首张牌无距离限制(值=true;首张牌用出后置 false)。写:往烈;读:viewDistance。 */
+export const WANGLIE_FIRST_VIEW_KEY = '往烈/首张可用';
+/** 本回合对其使用牌无距离限制(值=目标座次)。写:雄乱;读:viewDistance。 */
+export const XIONGLUAN_TARGET_VIEW_KEY = '雄乱/目标';
+
+/** 回合内 view 投影键(值存 turn.vars,「回合用量」atom 同步到在线视图)。
+ *  buildView(初始/重连视图)据此从 state 重建 turnUsage —— 否则这些放宽只存在于
+ *  在线视图,重连后丢失,前端按默认距离/次数判定,引擎放行的目标/第 2 张杀发不出动作。
+ *  仅收「本回合、归属当前回合玩家」的键(值可直接投影给 state.currentPlayerIndex);
+ *  按玩家维度存储的限一次标记(如 '制衡/usedThisTurn',存 player.vars)不在其列,
+ *  由 buildView 的 USED_THIS_TURN_SUFFIX 过滤单独投影。 */
+/** turn.vars 中的 view 镜像前缀:『回合用量』atom 把投影值写在 '__view/<key>' 下,
+ *  buildView(初始/重连视图)按此前缀还原 turnUsage——投影值形态与 state 侧无关
+ *  (如 界弓骑/active state 侧存座次、view 侧存 true),不覆盖 state 侧键、可反复更新。 */
+export const VIEW_MIRROR_PREFIX = '__view/';
+
+export const TURN_SCOPED_VIEW_KEYS: readonly string[] = [
+  XIANZHEN_WIN_TARGET_VIEW_KEY,
+  CHENGLUE_SUITS_VIEW_KEY,
+  JIANGCHI_CHOICE2_VIEW_KEY,
+  GONGQI_ACTIVE_VIEW_KEY,
+  DANGXIAN_NO_RANGE_VIEW_KEY,
+  TIANYI_WIN_VIEW_KEY,
+  JUEYAN_MOUNT_VIEW_KEY,
+  WANGLIE_FIRST_VIEW_KEY,
+  XIONGLUAN_TARGET_VIEW_KEY,
+];
 
 // ── helpers:带后缀/前缀的拼接 key ──────────────────────────
 

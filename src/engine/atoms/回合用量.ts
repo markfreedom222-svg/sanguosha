@@ -16,6 +16,7 @@
 //   - 通用 key:value 约定:数字 key 表示已用次数('杀/usedCount'),
 //     真值 key 表示限一次标记('* /usedThisTurn')。前端 activeWhen 按需读取。
 import type { AtomDefinition, GameView, ViewEventSplit, ViewEvent, Json } from '../types';
+import { TURN_SCOPED_VIEW_KEYS, VIEW_MIRROR_PREFIX } from '../rules/vars-keys';
 
 export const 回合用量: AtomDefinition<{ player: number; key: string; value: Json }> = {
   type: '回合用量',
@@ -30,9 +31,14 @@ export const 回合用量: AtomDefinition<{ player: number; key: string; value: 
     // '杀/exemptSuit'、'杀/usedCount')的 state 侧真相在 provider 注册表而非 vars,
     // 仅投影 view 会让「初始视图/重连视图」(buildView 从 state 重建)丢失放宽,
     // 重连后玩家/AI 按默认上限 1 判定 → 引擎允许的第 2 张杀发不出动作。
-    // 故把这些键镜像进 turn.vars(buildView 据此重建 turnUsage);回合结束自动清空。
-    if (atom.key.startsWith('杀/')) {
-      state.turn.vars[atom.key] = atom.value;
+    // 故把这些键镜像进 turn.vars(前缀 '__view/',buildView 据此重建 turnUsage)。
+    // 独立前缀而非同名键:同名键在 界弓骑/active、将驰/choice2 上 state 侧存「座次」、
+    // view 侧存 true,直接覆盖会让引擎侧谓词(=== 座次)失配、技能整段失效。
+    // 回合结束随 turn.vars 自动清空;同一键可反复更新(如 往烈/首张可用 true→false)。
+    const mirrorable =
+      atom.key.startsWith('杀/') || TURN_SCOPED_VIEW_KEYS.includes(atom.key);
+    if (mirrorable) {
+      state.turn.vars[VIEW_MIRROR_PREFIX + atom.key] = atom.value;
     }
   },
   toViewEvents(_state, atom): ViewEventSplit {

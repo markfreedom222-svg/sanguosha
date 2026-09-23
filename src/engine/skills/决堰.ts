@@ -38,7 +38,7 @@ import { usedThisTurn, markOncePerTurn, activeUnlessUsedThisTurn } from '../rule
 import { registerSlashExtraProvider } from '../rules/slash-quota';
 import { registerDistanceExemptor } from '../rules/distance';
 import type { SkillModule } from '../types';
-import { handLimitBonusKey, getHandLimitBonus, slashExtraKey } from '../rules/vars-keys';
+import { handLimitBonusKey, getHandLimitBonus, slashExtraKey, JUEYAN_MOUNT_VIEW_KEY } from '../rules/vars-keys';
 
 const SKILL_NAME = '决堰';
 
@@ -49,7 +49,7 @@ export const ABOLISH_PREFIX = '决堰/废除:';
 /** 本回合武器效果标记(turn.vars,回合结束自动清空) */
 const TURN_WEAPON = '决堰/本回合:武器';
 /** 本回合坐骑效果标记(turn.vars,回合结束自动清空) */
-const TURN_MOUNT = '决堰/本回合:坐骑';
+const TURN_MOUNT = JUEYAN_MOUNT_VIEW_KEY;
 /** 集智临时标记(player.vars,回合结束由 决堰 after-hook 移除集智后清除)。
  *  不使用 /usedThisTurn 等自动清理后缀——需在 回合结束 after-hook(已清 turn.vars)中读取。 */
 const JIZHI_TEMP = '决堰/集智临时';
@@ -154,6 +154,9 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
       } else if (group === '坐骑') {
         // 使用牌无距离限制(本回合):distanceExemptor 读此标记
         st.turn.vars[TURN_MOUNT] = true;
+        // 「使用牌无距离限制」须投影到 view:前端 viewEffectiveDistance/viewCanAttack
+        // 据此放开距离,否则超出范围的目标在 UI 中置灰、选不中。
+        await applyAtom(st, { type: '回合用量', player: ownerId, key: TURN_MOUNT, value: true });
       } else if (group === '宝物') {
         // 获得"集智"(本回合):回合结束由 after-hook 移除
         await applyAtom(st, { type: '添加技能', player: ownerId, skillId: '集智' });

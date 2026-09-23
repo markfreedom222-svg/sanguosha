@@ -6,7 +6,7 @@ import { resolveChoosePlayerCandidates } from './choosePlayerCandidates';
 import { resolveCardFilterCandidates } from './cardFilterCandidates';
 import { slashUsed } from '../rules/slash-quota';
 import { getCardResponseMode, SILENT_RESPONSE_PROMPT } from '../core/card-response-availability';
-import { getDistanceAttackMod, getDistanceDefenseMod, getDistanceAttackRange, SLASH_USED_COUNT_KEY, SLASH_QUOTA_USED_KEY, SLASH_EXTRA_USED_KEY, USED_THIS_TURN_SUFFIX } from '../rules/vars-keys';
+import { getDistanceAttackMod, getDistanceDefenseMod, getDistanceAttackRange, SLASH_USED_COUNT_KEY, VIEW_MIRROR_PREFIX, USED_THIS_TURN_SUFFIX } from '../rules/vars-keys';
 
 /** 从 ClientMessage 生成可读日志文本(不含玩家名——player 字段单独携带,由展示层映射) */
 export function formatLogEntry(msg: ClientMessage): string {
@@ -199,9 +199,9 @@ export function buildView(state: GameState, viewer: number, debug = false): Game
         ),
         ...(i === state.currentPlayerIndex
           ? Object.fromEntries(
-              Object.entries(state.turn.vars).filter(
-                ([k]) => k.startsWith('杀/') && k !== SLASH_QUOTA_USED_KEY && k !== SLASH_EXTRA_USED_KEY,
-              ),
+              Object.entries(state.turn.vars)
+                .filter(([k]) => k.startsWith(VIEW_MIRROR_PREFIX))
+                .map(([k, v]) => [k.slice(VIEW_MIRROR_PREFIX.length), v]),
             )
           : {}),
       },

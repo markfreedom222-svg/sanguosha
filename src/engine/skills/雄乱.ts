@@ -34,7 +34,7 @@ import {
   hasBlockingPending,
 } from '../core/skill';
 import { registerSlashUnlimitedProvider } from '../rules/slash-quota';
-import { slashUnlimitedKey } from '../rules/vars-keys';
+import { slashUnlimitedKey, XIONGLUAN_TARGET_VIEW_KEY } from '../rules/vars-keys';
 import { registerDistanceExemptor } from '../rules/distance';
 import { defaultPlayActive } from '../rules/action-active';
 import type { SkillModule } from '../types';
@@ -44,7 +44,7 @@ const SKILL_NAME = '雄乱';
 /** player.vars key:限定技已用(整局一次,永久) */
 const USED_KEY = '雄乱/used';
 /** turn.vars key:本回合雄乱指定的目标座次(回合结束自动清空) */
-const TARGET_VAR = '雄乱/目标';
+const TARGET_VAR = XIONGLUAN_TARGET_VIEW_KEY;
 /** player.vars 废除前缀:'雄乱/废除:<区/槽>' = true 表示该区/槽已废除(永久) */
 const ABOLISH_PREFIX = '雄乱/废除:';
 /** 判定区废除标记 */
@@ -164,6 +164,14 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
           player: ownerId,
           key: slashUnlimitedKey('雄乱'),
           value: true,
+        });
+        // ①「对其使用牌无距离限制」同样须投影:前端 viewEffectiveDistance/viewCanAttack
+        // 据此放开距离,否则超出范围的目标在 UI 中置灰、选不中。
+        await applyAtom(st, {
+          type: '回合用量',
+          player: ownerId,
+          key: TARGET_VAR,
+          value: target,
         });
       } finally {
         await popFrame(st);
