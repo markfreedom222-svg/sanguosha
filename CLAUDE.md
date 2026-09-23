@@ -228,6 +228,19 @@ vars['unlimitedKills']  // 应改为 '诸葛连弩/active'
   `判定`/`红颜`/`五谷丰登` 也取末尾；`整理牌堆` 的 `cards` 按 `[底 … 顶]` 构造。
   曾出现 4 处按 `deck[0]` 当顶（判定/红颜/界红颜/五谷丰登）→ 观星/恂恂 置顶的牌对判定无效、
   判定牌与下一张摸牌不同源。新增取牌代码务必与 `摸牌` 同向。
+- **判定区延时锦囊的实体牌归属**：延时锦囊（乐不思蜀/兵粮寸断/闪电）在**使用时**实体牌就已入
+  弃牌堆（`use-card.ts` 的 delayed 分支），`pendingTricks` 只持牌面快照 `{ name, source, card }`。
+  任何「清空判定区」路径（顺手牵羊/过河拆桥选判定区、死亡 `系统处理牌`、涅槃/界涅槃、行殇）
+  都**不得**再把这张实体牌 push/获得——否则弃牌堆同一张牌出现两次（重洗后同牌两个实例），
+  或同时存在于弃牌堆与手牌（牌唯一归属不变量）。统一走 `src/engine/core/judge-zone.ts` 的
+  `locateCard` / `discardJudgeZoneCard` / `obtainJudgeZoneCard`。
+- **view 放宽投影契约**：view 层（`viewSlashMax`/`viewCanSlash`/`viewEffectiveDistance`/
+  `viewCanAttack`）是浏览器按钮、选目标置灰与无头/AI 枚举的唯一判据。技能放宽了引擎侧限制
+  （出杀次数 / 距离 / 攻击范围）就必须同步投影到 `view.turnUsage`：出杀族用
+  `'杀/extra/<技能>'`、`'杀/unlimited/<技能>'` 前缀键，距离族用具名键（见 `vars-keys.ts` 的
+  `TURN_SCOPED_VIEW_KEYS`），经「回合用量」atom 投影；该 atom 的 apply 还会镜像到
+  `turn.vars['__view/<key>']`，供 `buildView`（初始/重连视图）重建。漏投影 = 引擎放行但
+  客户端发不出动作（按钮消失 / 目标选不中），整类效果在客户端不可用。
 
 ## 测试
 
