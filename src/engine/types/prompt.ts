@@ -1,7 +1,7 @@
 // ActionPrompt 类型:前端交互契约(出牌/选目标/分配/选将/选牌/选花色等 prompt)。
 // 原 src/engine/types.ts 的 `==================== ActionPrompt ====================` 段。
 
-import type { Card, Faction } from './state';
+import type { Card, Faction, Json } from './state';
 import type { GameView } from './view';
 
 /** action 激活上下文:传给 activeWhen 谓词,供 action 声明"我什么时候该被激活"。
@@ -71,6 +71,11 @@ export interface SelectTargetPrompt {
   title: string;
   description?: string;
   targetFilter: TargetFilter;
+  /** 提交时除 target 外**必须**附带的参数变体(如强袭的代价 cost:'hp'|'discard')。
+   *  数据驱动:枚举层(无头客户端/AI)为「每个变体 × 每个合法目标」生成一个 action,
+   *  避免客户端提交缺参被 validate 拒(强袭此前只有 target → 永远被拒)。
+   *  缺省 = 无额外参数。 */
+  paramVariants?: Array<{ label: string; params: Record<string, Json> }>;
 }
 export interface UseCardAndTargetPrompt {
   type: 'useCardAndTarget';

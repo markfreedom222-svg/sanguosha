@@ -5,6 +5,7 @@ import type {
   GameView,
   ActionContext,
   ClientMessage as EngineClientMessage,
+  Json,
   TargetFilter,
 } from '../../engine/types';
 import type { SkillActionDef } from '../skillActionRegistry';
@@ -380,7 +381,114 @@ function enumerateAltActions(
   return result;
 }
 
-/** 主入口：枚举当前座次可执行的操作（出牌/转化/替代出牌/分配/结束出牌阶段）。 */
+/**
+ * 枚举 prompt 非 useCard/useCardAndTarget/distribute 的主动技 use action。
+ *
+ * 这些技能不需要选中手牌,而是「点按钮 → 直接提交 params」(与前端 handleSkillAction
+ * 的 default/selectTarget/choosePlayer 分支同构):
+ *   - confirm(苦肉/缔盟/据守/奇谋/成略/界国色/界焚城/界甘露/界酒诗/乱武 等):params={}
+ *   - selectTarget(挑衅/强袭/反间/攻心/雄乱/界翦灭/界势斩/界解烦/界献州):params.target
+ *     (+ targets 数组,反间/雄乱 读 targets);prompt.paramVariants 声明的额外参数
+ *     (强袭代价 cost)按「变体 × 目标」展开,避免提交缺参被 validate 拒。
+ *   - choosePlayer(激将/界激将):每个候选目标一个 action(params.target)
+ *   - chooseOption(决堰):每个选项一个 action(params.option)
+ *
+ * 此前这四类 prompt 无任何枚举路径(只有 useCard/useCardAndTarget/distribute 三种),
+ * 无头客户端/AI 永远看不到这些技能 → 整类主动技不可发动。
+ */
+function enumeratePromptActions(
+  view: GameView,
+  seatIndex: number,
+  skillActions: SkillActionDef[],
+): AvailableAction[] {
+  const ctx: ActionContext = { view, perspectiveIdx: seatIndex };
+  const result: AvailableAction[] = [];
+  for (const action of skillActions) {
+    if (action.actionType !== 'use') continue;
+    const prompt = action.prompt;
+    if (
+      prompt.type !== 'confirm' &&
+      prompt.type !== 'selectTarget' &&
+      prompt.type !== 'choosePlayer' &&
+      prompt.type !== 'chooseOption'
+    ) {
+      continue;
+    }
+    if (!isActiveAction(action, ctx)) continue;
+    const base = {
+      skillId: action.skillId,
+      actionType: 'use' as const,
+      ownerId: seatIndex,
+      baseSeq: 0,
+    };
+
+    if (prompt.type === 'confirm') {
+      result.push({
+        description: `发动【${action.label}】(${prompt.title})`,
+        message: { ...base, params: {} },
+        validTargets: [],
+        category: 'play',
+      });
+      continue;
+    }
+
+    if (prompt.type === 'chooseOption') {
+      for (const opt of prompt.options) {
+        result.push({
+          description: `发动【${action.label}】:${opt.label}`,
+          message: { ...base, params: { option: opt.value } },
+          validTargets: [],
+          category: 'play',
+        });
+      }
+      continue;
+    }
+
+    // selectTarget / choosePlayer:合法目标列表
+    //   choosePlayer 优先用投影层下发的 candidates(filter 无法跨进程序列化);
+    //   selectTarget 用 targetFilter.filter(本地函数引用可用)。
+    let validTargets: number[];
+    if (prompt.type === 'choosePlayer') {
+      validTargets =
+        prompt.candidates ??
+        view.players
+          .filter((p) => p.alive && (!prompt.filter || prompt.filter(view, p.index)))
+          .map((p) => p.index);
+    } else {
+      const filter = prompt.targetFilter.filter;
+      validTargets = view.players
+        .filter((p) => p.alive && (!filter || filter(view, p.index)))
+        .map((p) => p.index);
+    }
+    if (validTargets.length === 0) continue;
+
+    // paramVariants(强袭代价 等):每个变体一个 action;缺省单个无额外参数的变体
+    const variants =
+      prompt.type === 'selectTarget' && prompt.paramVariants?.length
+        ? prompt.paramVariants
+        : [{ label: '', params: {} as Record<string, Json> }];
+    for (const t of validTargets) {
+      const targetName = view.players[t]?.name ?? `P${t}`;
+      for (const variant of variants) {
+        const suffix = variant.label ? `(${variant.label})` : '';
+        result.push({
+          description: `发动【${action.label}】${suffix} → ${targetName}`,
+          message: {
+            ...base,
+            // target 与 targets 同时携带:selectTarget 型技能两种读法都有
+            // (反间/雄乱 读 params.targets,挑衅/强袭/激将 读 params.target)。
+            params: { target: t, targets: [t], ...variant.params },
+          },
+          validTargets: [t],
+          category: 'play',
+        });
+      }
+    }
+  }
+  return result;
+}
+
+/** 主入口：枚举当前座次可执行的操作（出牌/转化/替代出牌/分配/技能按钮/结束出牌阶段）。 */
 export function enumerateAvailableActions(
   view: GameView,
   seatIndex: number,
@@ -392,6 +500,7 @@ export function enumerateAvailableActions(
     ...enumerateTransformActions(view, seatIndex, skillActions),
     ...enumerateAltActions(view, seatIndex, skillActions),
     ...enumerateDistributeActions(view, seatIndex, skillActions),
+    ...enumeratePromptActions(view, seatIndex, skillActions),
   ];
   // 出牌阶段:当前玩家可主动结束回合(无阻塞 pending 时)
   if (

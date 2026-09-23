@@ -172,6 +172,12 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
           return true;
         },
       },
+      // 代价二选一(官方「失去1点体力或弃置一张武器牌」):提交时除 target 外必须带 cost。
+      // 枚举层(无头客户端/AI)按变体展开生成可执行 action;弃武器分支还需补 cardId(武器牌)。
+      paramVariants: [
+        { label: '失去1点体力', params: { cost: 'hp' } },
+        { label: '弃一张武器牌(需补 cardId)', params: { cost: 'discard' } },
+      ],
     },
     activeWhen: (ctx) => {
       if (!defaultPlayActive(ctx)) return false;

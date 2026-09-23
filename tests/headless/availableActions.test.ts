@@ -3,6 +3,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { enumerateAvailableActions } from '../../src/client/headless/availableActions';
 import { HeadlessGameClient } from '../../src/client/headless/HeadlessGameClient';
 import { clearRegistry } from '../../src/client/skillActionRegistry';
+import { SkillTestHarness, dispatchAndWait } from '../engine-harness';
+import '../../src/engine/atoms';
+import { buildView } from '../../src/engine/index';
+import { createGameState } from '../../src/engine/types';
 import type { GameView, Card } from '../../src/engine/types';
 import type { SkillActionDef } from '../../src/client/skillActionRegistry';
 
@@ -50,6 +54,27 @@ function makeView(
     deadlineTotalMs: 0,
     log: [],
     settlementStack: [],
+  };
+}
+
+
+/** 端到端用例用的最小玩家对象(字段齐备,供 harness.setup / createGameState)。 */
+function makePlayerForEnum(opts: { index: number; name: string; skills?: string[] }) {
+  return {
+    index: opts.index,
+    name: opts.name,
+    character: opts.name,
+    health: 4,
+    maxHealth: 4,
+    alive: true,
+    hand: [] as string[],
+    equipment: {} as Record<string, string>,
+    skills: opts.skills ?? [],
+    vars: {},
+    marks: [],
+    pendingTricks: [],
+    tags: [] as string[],
+    judgeZone: [] as string[],
   };
 }
 
@@ -1115,5 +1140,185 @@ describe('HeadlessGameClient.getAvailableActions() — 被动 distribute pending
     // 手牌仅 1 张 < minTotal 2 → 无法弃 2 张强命,只提供 skip
     expect(actions.filter((a) => a.category === 'distribute')).toHaveLength(0);
     expect(actions.some((a) => a.category === 'skip')).toBe(true);
+  });
+});
+
+// ─── 非 useCard 型 prompt 的主动技枚举 ─────────────────────────
+// 这些主动技的 use action 不需要选中手牌,而是「点按钮 → 提交 params」:
+//   confirm(苦肉/缔盟/据守/奇谋/成略/界国色/界焚城/界甘露/界酒诗/乱武 等)
+//   selectTarget(挑衅/强袭/反间/攻心/雄乱/界翦灭/界势斩/界解烦/界献州)
+//   choosePlayer(激将/界激将)
+//   chooseOption(决堰)
+// 此前四类 prompt 无任何枚举路径 → 无头客户端/AI 永远看不到这些技能(整类主动技不可用)。
+
+// 苦肉:confirm 型(黄盖)。镜像 engine/skills/苦肉.ts onMount。
+const kurouUseAction: SkillActionDef = {
+  skillId: '苦肉',
+  ownerId: 0,
+  actionType: 'use',
+  label: '苦肉',
+  prompt: { type: 'confirm', title: '苦肉：失去1点体力，然后摸两张牌' },
+};
+
+// 挑衅:selectTarget 型(界挑衅/挑衅)。镜像 engine/skills/挑衅.ts onMount。
+const tiaoxinUseAction: SkillActionDef = {
+  skillId: '挑衅',
+  ownerId: 0,
+  actionType: 'use',
+  label: '挑衅',
+  prompt: {
+    type: 'selectTarget',
+    title: '挑衅:选择一名其他角色(其对你使用杀或你弃置其一张牌)',
+    targetFilter: { min: 1, max: 1, filter: (_view: GameView, t: number) => t !== 0 },
+  },
+};
+
+// 强袭:selectTarget + paramVariants(代价二选一:失去体力/弃武器)。镜像 engine/skills/强袭.ts。
+const qiangxiUseAction: SkillActionDef = {
+  skillId: '强袭',
+  ownerId: 0,
+  actionType: 'use',
+  label: '强袭',
+  prompt: {
+    type: 'selectTarget',
+    title: '强袭:选择一名本回合未以此法指定过的角色',
+    targetFilter: { min: 1, max: 1, filter: (_view: GameView, t: number) => t !== 0 },
+    paramVariants: [
+      { label: '失去1点体力', params: { cost: 'hp' } },
+      { label: '弃一张武器牌', params: { cost: 'discard' } },
+    ],
+  },
+};
+
+// 激将:choosePlayer 型(主公技)。镜像 engine/skills/激将.ts onMount。
+const jijiangUseAction: SkillActionDef = {
+  skillId: '激将',
+  ownerId: 0,
+  actionType: 'use',
+  label: '激将',
+  prompt: {
+    type: 'choosePlayer',
+    title: '激将:令一名蜀势力角色代为使用杀',
+    min: 1,
+    max: 1,
+    candidates: [1],
+  },
+};
+
+// 决堰:chooseOption 型(废除装备栏)。镜像 engine/skills/决堰.ts onMount。
+const jueyanUseAction: SkillActionDef = {
+  skillId: '决堰',
+  ownerId: 0,
+  actionType: 'use',
+  label: '决堰',
+  prompt: {
+    type: 'chooseOption',
+    title: '决堰:选择要废除的装备栏',
+    options: [
+      { value: '武器', label: '武器栏 — 使用杀的限制次数+3' },
+      { value: '防具', label: '防具栏 — 摸三张牌且手牌上限+3' },
+    ],
+  },
+};
+
+describe('enumerateAvailableActions:非 useCard 型主动技', () => {
+  it('confirm 型(苦肉) → 生成 use action,params 为空(与前端 handleSkillAction 一致)', () => {
+    const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [kurouUseAction]);
+    const kurou = actions.filter((a) => a.message.skillId === '苦肉');
+    expect(kurou).toHaveLength(1);
+    expect(kurou[0].message.actionType).toBe('use');
+    expect(kurou[0].message.params).toEqual({});
+    expect(kurou[0].validTargets).toEqual([]);
+  });
+
+  it('confirm 型:缺省 activeWhen → 非出牌阶段不枚举', () => {
+    const actions = enumerateAvailableActions(makeView(0, '摸牌', []), 0, [kurouUseAction]);
+    expect(actions.some((a) => a.message.skillId === '苦肉')).toBe(false);
+  });
+
+  it('confirm 型:activeWhen 为假(限一次已用) → 不枚举', () => {
+    const limited: SkillActionDef = { ...kurouUseAction, activeWhen: () => false };
+    const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [limited]);
+    expect(actions.some((a) => a.message.skillId === '苦肉')).toBe(false);
+  });
+
+  it('selectTarget 型(挑衅) → 每个合法目标一个 action(params.target + targets)', () => {
+    const actions = enumerateAvailableActions(makeView3(0, '出牌', []), 0, [tiaoxinUseAction]);
+    const picked = actions.filter((a) => a.message.skillId === '挑衅');
+    expect(picked.map((a) => a.message.params.target)).toEqual([1, 2]);
+    // 反间读 params.targets、激将读 params.target → 两者都带上
+    expect(picked[0].message.params.targets).toEqual([1]);
+    expect(picked[0].validTargets).toEqual([1]);
+  });
+
+  it('selectTarget + paramVariants(强袭代价) → 变体×目标,params 含 cost', () => {
+    const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [qiangxiUseAction]);
+    const picked = actions.filter((a) => a.message.skillId === '强袭');
+    // 1 个合法目标 × 2 个代价变体
+    expect(picked).toHaveLength(2);
+    expect(picked.map((a) => a.message.params.cost).sort()).toEqual(['discard', 'hp']);
+    expect(picked.every((a) => a.message.params.target === 1)).toBe(true);
+  });
+
+  it('choosePlayer 型(激将) → 每个候选一个 action', () => {
+    const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [jijiangUseAction]);
+    const picked = actions.filter((a) => a.message.skillId === '激将');
+    expect(picked).toHaveLength(1);
+    expect(picked[0].message.params.target).toBe(1);
+  });
+
+  it('chooseOption 型(决堰) → 每个选项一个 action(params.option)', () => {
+    const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [jueyanUseAction]);
+    const picked = actions.filter((a) => a.message.skillId === '决堰');
+    expect(picked.map((a) => a.message.params.option)).toEqual(['武器', '防具']);
+  });
+
+  it('与出牌/分配枚举并存不冲突', () => {
+    const hand: Card[] = [{ id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' }];
+    const actions = enumerateAvailableActions(makeView(0, '出牌', hand), 0, [
+      killUseAction,
+      kurouUseAction,
+      zhihengDistributeAction,
+    ]);
+    expect(actions.some((a) => a.message.skillId === '杀')).toBe(true);
+    expect(actions.some((a) => a.message.skillId === '苦肉')).toBe(true);
+    expect(actions.some((a) => a.message.skillId === '制衡')).toBe(true);
+  });
+});
+
+// ─── 枚举 → 引擎执行(端到端)────────────────────────────────────
+// 单测枚举输出不够:枚举出的 message 必须能直接被引擎 validate/execute 接受。
+describe('主动技枚举 → 引擎执行', () => {
+  it('苦肉:枚举出的 action 直接 dispatch 被接受并生效(失体力+摸两张)', async () => {
+    const harness = new SkillTestHarness();
+    const cardMap: Record<string, Card> = {
+      d1: { id: 'd1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' },
+      d2: { id: 'd2', name: '闪', suit: '♥', color: '红', rank: '3', type: '基本牌' },
+    };
+    const state = createGameState({
+      players: [
+        makePlayerForEnum({ index: 0, name: '黄盖', skills: ['苦肉'] }),
+        makePlayerForEnum({ index: 1, name: 'P1' }),
+      ],
+      cardMap,
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.zones = { deck: ['d1', 'd2'], discardPile: [], processing: [] };
+    await harness.setup(state);
+
+    const view = buildView(state, 0);
+    const actions = enumerateAvailableActions(
+      view,
+      0,
+      harness.player(0).availableActions() as unknown as SkillActionDef[],
+    );
+    const kurou = actions.find((a) => a.message.skillId === '苦肉');
+    expect(kurou).toBeDefined();
+
+    await dispatchAndWait(state, { ...kurou!.message, baseSeq: state.seq });
+    expect(state.players[0].health).toBe(3); // 失去 1 点体力
+    expect(state.players[0].hand).toEqual(expect.arrayContaining(['d1', 'd2'])); // 摸两张
   });
 });
