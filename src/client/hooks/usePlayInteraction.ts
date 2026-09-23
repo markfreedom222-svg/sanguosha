@@ -192,6 +192,9 @@ export interface PlayInteractionResult {
   /** 多卡转化:反选(超 maxCards 时按 FIFO 取尾部) */
   handleTransformInvert: () => void;
   isTargetable: (i: number) => boolean;
+  /** 主动技选目标模式:selectTarget/choosePlayer 型技能按钮已点开、等待点座位选目标。
+   *  座位环据此进入「可选目标」高亮态(与 playRules.needsTarget 同一套 UI 语义)。 */
+  skillTargetMode: boolean;
   /** 清空回应选牌/换目标(Esc 快捷键用):与 pending 切换自动清空同一对 setter */
   clearRespondSelection: () => void;
   /** 双击手牌:可回应牌直接打出(无需目标时);自由出牌无目标牌直接出,
@@ -259,6 +262,13 @@ export function usePlayInteraction(
   // ─── 状态 ───
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+  /** 主动技选目标模式:点击 selectTarget/choosePlayer 型技能按钮后置位(见 handleSkillAction),
+   *  提交或取消时清空。座位可选性由 isTargetable 按该 action 的 prompt 判定;
+   *  params 保存按钮变体参数(强袭代价 cost),提交时一并发出。 */
+  const [pendingSkillAction, setPendingSkillAction] = useState<{
+    action: SkillActionDef;
+    params: Record<string, Json>;
+  } | null>(null);
   const [selectedKillTarget, setSelectedKillTarget] = useState<string | null>(null);
   // 多目标(铁索连环 max>=2):点击目标累加为集合,与单选/槽位路径互斥
   const [selectedMultiTargets, setSelectedMultiTargets] = useState<string[]>([]);
@@ -527,8 +537,39 @@ export function usePlayInteraction(
     [view.players],
   );
 
+  /** 提交 selectTarget/choosePlayer 型主动技(目标名 → 座次)。
+   *  单选(max<=1)技能在点座位时即提交;多选技能走「点座位累加 + 再点按钮」。
+   *  target 与 targets 同时携带:反间/攻心/雄乱 读 targets(单选也须为长度 1 数组),
+   *  挑衅/强袭/激将 读 target。 */
+  const submitSkillTarget = useCallback(
+    (action: SkillActionDef, targetName: string, extra: Record<string, Json>) => {
+      const idx = nameToIndex(targetName);
+      if (idx < 0) return;
+      send(action.skillId, action.actionType, { ...extra, target: idx, targets: [idx] });
+      setSelectedTarget(null);
+      setSelectedCardId(null);
+      setPendingSkillAction(null);
+    },
+    [nameToIndex, send],
+  );
+
   const isTargetable = useCallback(
     (i: number): boolean => {
+      // 主动技选目标模式(selectTarget/choosePlayer):按该 action 的 prompt 判定可选性,
+      // 与出牌选目标共用座位高亮/点击链路(此前这些技能没有进入选目标模式的入口)。
+      if (pendingSkillAction) {
+        const p = pendingSkillAction.action.prompt;
+        if (!view.players[i]?.alive) return false;
+        if (p.type === 'selectTarget') {
+          if (i === perspectiveIdx && !p.targetFilter.allowSelf) return false;
+          return p.targetFilter.filter ? p.targetFilter.filter(view, i) : true;
+        }
+        if (p.type === 'choosePlayer') {
+          if (p.candidates) return p.candidates.includes(i);
+          if (p.filter && !p.filter(view, i)) return false;
+          return true;
+        }
+      }
       if (isDistributeActive && activeDistribute) {
         const mode = activeDistribute.prompt.mode ?? 'allocate';
         // 制衡(select)无目标选择
@@ -601,6 +642,7 @@ export function usePlayInteraction(
       selectedCard,
       isMyAwaiting,
       respondTargetFilter,
+      pendingSkillAction,
     ],
   );
 
@@ -653,6 +695,16 @@ export function usePlayInteraction(
     (name: string) => {
       const idx = view.players.findIndex((pl) => pl.name === name);
       if (idx >= 0 && !isTargetable(idx)) return;
+      // 主动技选目标模式:单选技能(挑衅/强袭/反间 等 max=1)点座位即提交,无需再点按钮
+      if (pendingSkillAction) {
+        const p = pendingSkillAction.action.prompt;
+        const maxTargets =
+          p.type === 'selectTarget' ? (p.targetFilter.max ?? 1) : p.type === 'choosePlayer' ? (p.max ?? 1) : 1;
+        if (maxTargets <= 1) {
+          submitSkillTarget(pendingSkillAction.action, name, pendingSkillAction.params);
+          return;
+        }
+      }
       if (isDistributeActive && activeDistribute) {
         const mode = activeDistribute.prompt.mode ?? 'allocate';
         // 制衡(select)无目标,座位点击忽略
@@ -735,13 +787,41 @@ export function usePlayInteraction(
       isMyAwaiting,
       respondTargetFilter,
       respondTargetName,
+      pendingSkillAction,
+      submitSkillTarget,
     ],
   );
 
   const handleSkillAction = useCallback(
-    (action: SkillActionDef) => {
+    (
+      action: SkillActionDef,
+      /** 按钮变体参数(强袭 selectTarget 的代价 cost 等):与 prompt.paramVariants 对应,
+       *  由 PlayerCardLarge 按变体渲染的按钮传入;无变体时缺省 {}。 */
+      extraParams?: Record<string, Json>,
+    ) => {
       const { skillId, actionType, prompt } = action;
-      const params: Record<string, Json> = {};
+      const params: Record<string, Json> = { ...(extraParams ?? {}) };
+      // selectTarget/choosePlayer 型主动技:需要目标。无目标时先进入选目标模式
+      // (座位环按 prompt 的 targetFilter/filter 高亮),选好目标再点按钮提交——
+      // 与出牌(选牌→选目标→出牌)同一交互范式。此前无目标直接 return,按钮点了没反应。
+      if (prompt.type === 'selectTarget' || prompt.type === 'choosePlayer') {
+        const maxTargets =
+          prompt.type === 'selectTarget'
+            ? (prompt.targetFilter.max ?? 1)
+            : (prompt.max ?? 1);
+        if (!selectedTarget) {
+          // 未选目标:进入选目标模式(座位环按 prompt 的 targetFilter/filter 高亮)
+          setPendingSkillAction({ action, params });
+          setSelectedCardId(null);
+          return;
+        }
+        if (maxTargets <= 1) {
+          // 已选目标 + 单选技能:直接提交(与点座位即提交同一路径)
+          submitSkillTarget(action, selectedTarget, params);
+          return;
+        }
+        setPendingSkillAction(null);
+      }
 
       switch (prompt.type) {
         case 'useCard':
@@ -752,6 +832,9 @@ export function usePlayInteraction(
         case 'selectTarget':
           if (!selectedTarget) return;
           params.target = nameToIndex(selectedTarget);
+          // targets 数组同时携带:反间/攻心/雄乱 读 params.targets(单选也必须为长度 1 的数组),
+          // 挑衅/强袭/激将 读 params.target。只发 target 会让反间族 validate 恒拒。
+          params.targets = [params.target];
           break;
         case 'useCardAndTarget':
           if (action.transform) {
@@ -812,7 +895,7 @@ export function usePlayInteraction(
       setSelectedCardId(null);
       setSelectedTarget(null);
     },
-    [selectedCardId, selectedTarget, nameToIndex, perspectiveHand, send],
+    [selectedCardId, selectedTarget, nameToIndex, perspectiveHand, send, submitSkillTarget],
   );
 
   const handleTransformPlay = useCallback(
@@ -1058,6 +1141,8 @@ export function usePlayInteraction(
 
   const handleCardClick = useCallback(
     (card: Card) => {
+      // 选中手牌即退出主动技选目标模式(避免"技能选目标模式"与"出牌选目标"两套选择态并存)
+      setPendingSkillAction(null);
       // distribute 选牌
       if (isDistributeActive && activeDistribute) {
         const candidateSet = new Set(activeDistribute.cardIds);
@@ -1270,6 +1355,7 @@ export function usePlayInteraction(
   const cancelSelection = useCallback(() => {
     setSelectedCardId(null);
     setSelectedTarget(null);
+    setPendingSkillAction(null); // 退出主动技选目标模式(Esc / 取消选择)
   }, []);
 
   // ─── 提交派生(与 CenterActionBar 按钮 enabled 同源;Enter 快捷键复用)───
@@ -1356,6 +1442,7 @@ export function usePlayInteraction(
     handleTransformSelectAll,
     handleTransformInvert,
     isTargetable,
+    skillTargetMode: pendingSkillAction !== null,
     clearRespondSelection,
     handleCardDoubleClick,
     transformSubmit,

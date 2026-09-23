@@ -684,3 +684,85 @@ describe('GameView:贯石斧被动 distribute(杀被闪抵消后选 2 张弃置�
     expect(container.querySelector('[style*="--flip-duration"]')).toBeNull();
   });
 });
+
+// ─── selectTarget 型主动技(挑衅/反间/强袭/攻心/雄乱 等)────────────────
+// 回归根因:PlayerCardLarge.triggerableActions 只收 confirm/choosePlayer/
+// (useCardAndTarget+transform)/distribute —— selectTarget 型主动技整类无按钮,
+// 浏览器里点不到(与 distribute 漏网同因);且没有任何"进入选目标模式"的入口,
+// 座位环永不进入可选目标态 → 即便有按钮也拿不到 target。
+// 另:handleSkillAction 的 selectTarget 分支只发 params.target,而反间/攻心/雄乱
+// 读 params.targets → 即使有按钮也会被 validate 拒(「需要指定一名目标」)。
+describe('GameView:selectTarget 型主动技按钮', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  /** 视角玩家 P1 持有 selectTarget 型主动技 skillId 的 view。 */
+  function makeSelectTargetView(skillId: string): GameView {
+    const base = makeView();
+    return makeView({
+      players: [
+        { ...base.players[0], skills: [skillId] },
+        { ...base.players[1], name: 'P2', character: 'P2' },
+      ],
+    });
+  }
+
+  it('挑衅:出牌阶段渲染按钮;点按钮进入选目标模式 → 点目标座位即提交 { target, targets }', async () => {
+    const view = makeSelectTargetView('挑衅');
+    const onAction = vi.fn();
+    render(<GameViewComponent view={view} onAction={onAction} />);
+
+    // 注册技能 actions 是 async(dynamic import),等按钮出现
+    const btn = await screen.findByRole('button', { name: '挑衅' });
+
+    // 第一步:点技能按钮 → 进入选目标模式(尚未提交)
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(onAction).not.toHaveBeenCalled();
+
+    // 第二步:点目标座位 → 单选技能直接提交(反间/攻心/雄乱 读 targets,故两者都发)
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-player-name="P2"]')!);
+    });
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: '挑衅',
+          actionType: 'use',
+          params: expect.objectContaining({ target: 1, targets: [1] }),
+        }),
+      );
+    });
+  });
+
+  it('强袭:paramVariants 代价二选一 → 两个按钮,选目标后提交携带对应 cost', async () => {
+    const view = makeSelectTargetView('强袭');
+    const onAction = vi.fn();
+    render(<GameViewComponent view={view} onAction={onAction} />);
+
+    const hpBtn = await screen.findByRole('button', { name: /强袭·失去1点体力/ });
+    const discardBtn = screen.getByRole('button', { name: /强袭·弃一张武器牌/ });
+
+    // 点"弃一张武器牌"变体按钮 → 进入选目标模式,携带 cost
+    await act(async () => {
+      fireEvent.click(discardBtn);
+    });
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-player-name="P2"]')!);
+    });
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: '强袭',
+          actionType: 'use',
+          params: expect.objectContaining({ target: 1, cost: 'discard' }),
+        }),
+      );
+    });
+    expect(hpBtn).toBeDefined();
+  });
+});

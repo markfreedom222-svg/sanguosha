@@ -8,9 +8,9 @@
 import { memo } from 'react';
 import { cx } from '@linaria/core';
 import * as styles from './gameViewStyles';
-import type { GameView } from '../../engine/types';
+import type { GameView, Json } from '../../engine/types';
 import type { SkillActionDef } from '../skillActionRegistry';
-import { isActiveAction, isFreePlayWindow } from '../utils/gameViewHelpers';
+import { isActiveAction, isFreePlayWindow, skillActionVariants } from '../utils/gameViewHelpers';
 import { FACTION_BG, SUIT_COLOR, EQUIPMENT_SKILL_NAMES } from './gameViewConstants';
 import { getCharacterMeta, LORD_SKILLS } from '../../engine/data/character-meta';
 import { getCharacterImage } from '../assets/imageAssets';
@@ -36,8 +36,10 @@ export interface PlayerCardLargeProps {
   hpChange?: HpChangeNumber;
   /** 是否当前回合(用于「回合」徽章) */
   isPerspectiveTurn: boolean;
-  /** 点击技能按钮(武将技/装备技统一入口) */
-  onSkillAction: (action: SkillActionDef) => void;
+  /** 点击技能按钮(武将技/装备技统一入口)。
+   *  extraParams:按钮变体参数(强袭 selectTarget 的代价 cost 等),与 prompt 声明的
+   *  paramVariants 一一对应;无变体时缺省 {}。 */
+  onSkillAction: (action: SkillActionDef, extraParams?: Record<string, Json>) => void;
 }
 
 /** 内部 memo impl 的 props(含从 context 转发下来的共享字段)。 */
@@ -91,11 +93,14 @@ export function PlayerCardLargeImpl({
       !EQUIPMENT_SKILL_NAMES.has(s) &&
       (isLordSeat || !LORD_SKILLS.has(s)),
   );
-  // 主动技(confirm/choosePlayer/转化类/distribute)渲染为可点按钮
+  // 主动技(confirm/choosePlayer/selectTarget/转化类/distribute)渲染为可点按钮。
+  // selectTarget 型(挑衅/反间/强袭/攻心/雄乱/界翦灭/界势斩/界解烦/界献州)此前被漏掉 →
+  // 整类技能在浏览器里无按钮、无法发动(与 distribute 漏网同因)。
   const triggerableActions = skillActions.filter(
     (a) =>
       a.prompt.type === 'confirm' ||
       a.prompt.type === 'choosePlayer' ||
+      a.prompt.type === 'selectTarget' ||
       (a.prompt.type === 'useCardAndTarget' && !!a.transform) ||
       a.prompt.type === 'distribute',
   );
@@ -238,21 +243,30 @@ export function PlayerCardLargeImpl({
       {visibleSkills.length > 0 && (
         <div className={styles.playerCardSkillRow}>
           {visibleSkills.map((s) => {
-            const btn = triggerableActions.find((a) => a.skillId === s);
+            const btns = triggerableActions.filter((a) => a.skillId === s);
+            const btn = btns[0];
             // 描述/资源按原 id(s)查询;展示名去前导"界"
             const desc = getSkillDescription(s) ?? btn?.prompt.title;
             const display = displaySkillName(s);
-            if (btn && isSkillActive(btn)) {
-              return (
+            // 变体展开:selectTarget + paramVariants(强袭代价)每个变体一个按钮,
+            // 点击时把变体 params 一并提交;无变体时退化为单个按钮(label 为空)。
+            const variants = btns.flatMap((a) =>
+              skillActionVariants(a).map((v) => ({ action: a, ...v })),
+            );
+            const activeVariants = variants.filter((v) => isSkillActive(v.action));
+            if (activeVariants.length > 0) {
+              return activeVariants.map((v) => (
                 <SkillTag
-                  key={s}
+                  key={v.label ? `${s}:${v.label}` : s}
                   as="button"
                   name={display}
-                  description={desc}
-                  className={cx(styles.skillBtn, skillBtnVariant(btn.style))}
-                  onClick={() => onSkillAction(btn)}
-                />
-              );
+                  description={v.label ? `${desc ?? ''}(${v.label})` : desc}
+                  className={cx(styles.skillBtn, skillBtnVariant(v.action.style))}
+                  onClick={() => onSkillAction(v.action, v.params)}
+                >
+                  {v.label ? `${display}·${v.label}` : undefined}
+                </SkillTag>
+              ));
             }
             if (btn && inFreePlayWindow) {
               // 细分禁用原因:限一次技能已发动(turnUsage 投影) vs 其他条件不满足

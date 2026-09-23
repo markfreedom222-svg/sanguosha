@@ -302,6 +302,7 @@ export function GameViewComponentImpl({
     handlePlayRespond,
     handleEndTurn,
     isTargetable,
+    skillTargetMode,
     clearRespondSelection,
     handleCardDoubleClick,
     handleTransformPlay,
@@ -577,7 +578,8 @@ export function GameViewComponentImpl({
   const selfInTargetMode =
     (!!playRules && playRules.needsTarget) ||
     (isDistributeActive && !!activeDistribute?.externalTargetSelection) ||
-    respondNeedsTarget;
+    respondNeedsTarget ||
+    skillTargetMode; // 主动技选目标模式(selectTarget/choosePlayer 型技能按钮)
   const selfTargetable = canOperate && selfInTargetMode && isTargetable(perspectiveIdx);
   const selfSelectedAsTarget =
     isDistributeActive && activeDistribute?.externalTargetSelection
@@ -658,7 +660,8 @@ export function GameViewComponentImpl({
                 selectedNeedsTarget={
                   (!!playRules && playRules.needsTarget) ||
                   (isDistributeActive && !!activeDistribute?.externalTargetSelection) ||
-                  respondNeedsTarget
+                  respondNeedsTarget ||
+                  skillTargetMode
                 }
                 selectedTargetNames={
                   isDistributeActive && activeDistribute?.externalTargetSelection

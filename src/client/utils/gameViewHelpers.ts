@@ -229,6 +229,24 @@ export function resolveDistributeCardIds(
   return hand.map((c) => c.id);
 }
 
+// ─── 主动技按钮的提交变体 ───
+
+/** 主动技按钮的提交变体:一个 action 可能对应多个可点按钮。
+ *  - selectTarget + prompt.paramVariants(强袭代价二选一「失去体力/弃武器」):
+ *    每个变体一个按钮,点击时把变体 params(cost)并入提交参数——否则单按钮提交缺 cost,
+ *    引擎 validate 恒拒(「cost 必须为 hp 或 discard」),技能在浏览器上无法发动。
+ *  - 其余(confirm/choosePlayer/selectTarget 无变体):单个按钮,label 为空 = 用技能名作按钮文本。
+ *  与无头客户端 enumeratePromptActions 的变体展开同源(同一份 prompt.paramVariants 声明)。 */
+export function skillActionVariants(
+  action: SkillActionDef,
+): Array<{ label: string; params: Record<string, Json> }> {
+  const prompt = action.prompt;
+  if (prompt.type === 'selectTarget' && prompt.paramVariants?.length) {
+    return prompt.paramVariants.map((v) => ({ label: v.label, params: v.params }));
+  }
+  return [{ label: '', params: {} }];
+}
+
 // ─── 出牌操作按钮可见性 ───
 // 与 availableActions 结束回合条件、引擎 hasBlockingPending 对齐:
 // 仅「自己回合 + 出牌阶段 + 无阻塞 pending」可自由出牌/结束回合。
