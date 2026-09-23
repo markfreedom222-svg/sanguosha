@@ -44,22 +44,18 @@ export function buildView(state: GameState, viewer: number, debug = false): Game
   // 选将 atom/deadline/target,前端据此渲染主公的选将界面和倒计时。
   // 死亡玩家不参与任何询问:广播型 slot(无懈可击等)对死亡 viewer 不可操作。
   const viewerAlive = viewer >= 0 && state.players[viewer]?.alive === true;
-  let ownOrBroadcastSlot =
-    viewer >= 0
-      ? (state.pendingSlots.get(viewer) ??
-        (viewerAlive
-          ? [...state.pendingSlots.values()].find(
-              (s) =>
-                (s.atom as { target?: number }).target === TARGET_BROADCAST &&
-                !s.isPaused,
-            )
-          : undefined))
-      : undefined;
-  // viewer 专属 slot 若已 pause(respond execute 内部创建了新 pending),
-  // 不应再返回它——交给 observer 逻辑接管,与增量视图对齐。
-  if (ownOrBroadcastSlot?.isPaused) {
-    ownOrBroadcastSlot = undefined;
-  }
+  const broadcastSlot = viewerAlive
+    ? [...state.pendingSlots.values()].find(
+        (s) =>
+          (s.atom as { target?: number }).target === TARGET_BROADCAST && !s.isPaused,
+      )
+    : undefined;
+  const ownSlot = viewer >= 0 ? state.pendingSlots.get(viewer) : undefined;
+  // viewer 专属 slot 若已 pause(respond execute 内部创建了新 pending),不应再返回它。
+  // 但必须继续回退到广播型 slot:该 slot 对 viewer 是可回应的(增量视图同样为所有存活
+  // viewer 投影广播询问),否则「自己动作触发无懈可击询问」期间重连/初始视图看不到
+  // 询问、无法回应(在线客户端能看到)。无广播 slot 时才交给 observer 逻辑接管。
+  const ownOrBroadcastSlot = ownSlot && !ownSlot.isPaused ? ownSlot : broadcastSlot;
   if (ownOrBroadcastSlot) {
     const slot = ownOrBroadcastSlot;
     const def = slot.definition;
