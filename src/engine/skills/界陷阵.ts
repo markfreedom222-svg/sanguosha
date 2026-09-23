@@ -55,6 +55,7 @@ import {
 import { unloadSkillInstance, instantiateSkill } from './lifecycle';
 import { usedThisTurn, markOncePerTurn, activeUnlessUsedThisTurn } from '../rules/once-per-turn';
 import { registerSlashUnlimitedProvider } from '../rules/slash-quota';
+import { slashUnlimitedKey } from '../rules/vars-keys';
 import { registerHandLimitProvider } from '../rules/hand-limit';
 import { registerDistanceExemptor } from '../rules/distance';
 import { defaultPlayActive } from '../rules/action-active';
@@ -223,6 +224,14 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
       if (win) {
         st.turn.vars[WIN_VAR] = target;
         await applyAtom(st, { type: '回合用量', player: from, key: WIN_VAR, value: target });
+        // 「对其使用牌无次数限制」须投影到 view:前端 viewCanSlash/无头枚举读
+        // view.turnUsage['杀/unlimited/*'],缺失则拼点赢后第 2 张杀在客户端不可用。
+        await applyAtom(st, {
+          type: '回合用量',
+          player: from,
+          key: slashUnlimitedKey('界陷阵'),
+          value: true,
+        });
       } else {
         st.turn.vars[LOST_VAR] = target;
         await applyAtom(st, { type: '回合用量', player: from, key: LOST_VAR, value: target });

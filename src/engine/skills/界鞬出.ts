@@ -47,6 +47,7 @@ import type {
 import { applyAtom } from '../core/apply';
 import { registerAction, registerAfterHook, registerBeforeHook } from '../core/skill';
 import { registerSlashExtraProvider } from '../rules/slash-quota';
+import { slashExtraKey } from '../rules/vars-keys';
 
 const TAG = '界鞬出/禁闪';
 const CONFIRM = '界鞬出/confirmed';
@@ -69,6 +70,7 @@ export function createSkill(id: string, ownerId: number): Skill {
 /** 让目标从自己的手牌/装备区选一张牌弃置(博弈:基本→获得杀不命中,非基本→禁闪命中+出杀+1)。 */
 async function askTargetToDiscard(
   state: GameState,
+  ownerId: number,
   target: number,
   killCardId: string,
 ): Promise<void> {
@@ -131,6 +133,14 @@ async function askTargetToDiscard(
     await applyAtom(state, { type: '加标签', player: target, tag: TAG });
     const cur = (state.turn.vars[QUOTA_BONUS] as number | undefined) ?? 0;
     state.turn.vars[QUOTA_BONUS] = cur + 1;
+    // 额外出杀次数须投影到 view:前端 viewSlashMax/无头枚举读 view.turnUsage['杀/extra/*'],
+    // 缺失则 +1 后第 2 张杀在客户端不可用(引擎放行但发不出动作)。
+    await applyAtom(state, {
+      type: '回合用量',
+      player: ownerId,
+      key: slashExtraKey('界鞬出'),
+      value: cur + 1,
+    });
   }
 }
 
@@ -235,7 +245,7 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
     if (!ctx.state.localVars[CONFIRM]) return;
 
     // 目标自选弃一张牌
-    await askTargetToDiscard(ctx.state, target, atom.cardId);
+    await askTargetToDiscard(ctx.state, ownerId, target, atom.cardId);
   });
 
   // ── 成为目标 before:目标在获得杀名单 → cancel(此杀对该目标不生效)──

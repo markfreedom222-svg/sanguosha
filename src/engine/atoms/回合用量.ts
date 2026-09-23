@@ -23,8 +23,17 @@ export const 回合用量: AtomDefinition<{ player: number; key: string; value: 
     if (!state.players[atom.player]) return `player ${atom.player} not found`;
     return null;
   },
-  apply() {
-    // no-op:state 侧 vars 由技能 execute 同步维护。本 atom 仅作 view 同步通道。
+  apply(state, atom) {
+    // 默认 no-op:限一次标记/用量计数等 state 侧 vars 由技能 execute 同步维护
+    // (限一次标记必须在 execute 第一个 await 之前设置以防 dispatch 重入)。
+    // 例外:出杀放宽族键('杀/unlimited/*'、'杀/extra/*'、'杀/blocked/*'、'杀/target/*'、
+    // '杀/exemptSuit'、'杀/usedCount')的 state 侧真相在 provider 注册表而非 vars,
+    // 仅投影 view 会让「初始视图/重连视图」(buildView 从 state 重建)丢失放宽,
+    // 重连后玩家/AI 按默认上限 1 判定 → 引擎允许的第 2 张杀发不出动作。
+    // 故把这些键镜像进 turn.vars(buildView 据此重建 turnUsage);回合结束自动清空。
+    if (atom.key.startsWith('杀/')) {
+      state.turn.vars[atom.key] = atom.value;
+    }
   },
   toViewEvents(_state, atom): ViewEventSplit {
     const view: ViewEvent = {
