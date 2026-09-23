@@ -92,7 +92,8 @@ async function resolveBountifulHarvest(ctx: ResolveCtx): Promise<void> {
     const revealedIds: string[] = [];
     for (let i = 0; i < cardCount; i++) {
       if (state.zones.deck.length === 0) break;
-      const topId = state.zones.deck[0];
+      // 牌堆顶 = deck 末尾(与 摸牌/判定 一致):逐张取顶牌亮出
+      const topId = state.zones.deck[state.zones.deck.length - 1];
       await applyAtom(state, {
         type: '移动牌',
         cardId: topId,

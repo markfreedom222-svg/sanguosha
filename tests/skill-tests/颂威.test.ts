@@ -73,7 +73,7 @@ function build颂威State(opts: {
   judgePlayer?: number; // 被判定的座次(默认 P1);同时决定 currentPlayerIndex
 }): GameState {
   const cardMap: Record<string, Card> = { j1: opts.judgeCard };
-  const deck = ['j1', ...buildDeck(cardMap, 5)];
+  const deck = [...buildDeck(cardMap, 5), 'j1'];
   const judgePlayer = opts.judgePlayer ?? 1;
   return createGameState({
     players: [

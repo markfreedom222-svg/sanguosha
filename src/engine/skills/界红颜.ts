@@ -50,7 +50,7 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
     async (ctx): Promise<HookResult | void> => {
       const atom = ctx.atom;
       if (atom.player !== ownerId) return;
-      const topId = ctx.state.zones.deck[0];
+      const topId = ctx.state.zones.deck[ctx.state.zones.deck.length - 1];
       if (!topId) return;
       const card: Card | undefined = ctx.state.cardMap[topId];
       if (!card) return;

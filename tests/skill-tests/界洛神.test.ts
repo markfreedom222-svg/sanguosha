@@ -83,7 +83,7 @@ describe('界洛神', () => {
         }),
       ],
       cardMap: { j1, j2 },
-      zones: { deck: ['j1', 'j2'], processing: [], discardPile: [] },
+      zones: { deck: ['j2', 'j1'], processing: [], discardPile: [] },
       currentPlayerIndex: 0,
       phase: '准备',
       turn: { round: 1, phase: '准备', vars: {} },
@@ -127,7 +127,7 @@ describe('界洛神', () => {
         }),
       ],
       cardMap: { j1, j2, j3 },
-      zones: { deck: ['j1', 'j2', 'j3'], processing: [], discardPile: [] },
+      zones: { deck: ['j3', 'j2', 'j1'], processing: [], discardPile: [] },
       currentPlayerIndex: 0,
       phase: '准备',
       turn: { round: 1, phase: '准备', vars: {} },
@@ -239,7 +239,7 @@ describe('界洛神', () => {
         }),
       ],
       cardMap: { j1, j2, j3 },
-      zones: { deck: ['j1', 'j2', 'j3'], processing: [], discardPile: [] },
+      zones: { deck: ['j3', 'j2', 'j1'], processing: [], discardPile: [] },
       currentPlayerIndex: 0,
       phase: '准备',
       turn: { round: 1, phase: '准备', vars: {} },
@@ -257,10 +257,10 @@ describe('界洛神', () => {
     await harness.waitForStable();
     harness.processAllEvents();
 
-    // 仅获得 j1;j2、j3 未被判定,仍在牌堆顶;弃牌堆空
+    // 仅获得 j1;j2、j3 未被判定,仍在牌堆顶(牌堆末尾 = 顶);弃牌堆空
     expect(harness.state.players[0].hand).toContain('j1');
     expect(harness.state.players[0].hand.length).toBe(1);
-    expect(harness.state.zones.deck).toEqual(['j2', 'j3']);
+    expect(harness.state.zones.deck).toEqual(['j3', 'j2']);
     expect(harness.state.zones.discardPile.length).toBe(0);
   });
 
@@ -284,7 +284,7 @@ describe('界洛神', () => {
         }),
       ],
       cardMap: { j1, j2, j3 },
-      zones: { deck: ['j1', 'j2', 'j3'], processing: [], discardPile: [] },
+      zones: { deck: ['j3', 'j2', 'j1'], processing: [], discardPile: [] },
       currentPlayerIndex: 0,
       phase: '准备',
       turn: { round: 1, phase: '准备', vars: {} },
@@ -367,7 +367,7 @@ describe('界洛神', () => {
         }),
       ],
       cardMap: { j1, j2, j3 },
-      zones: { deck: ['j1', 'j2', 'j3'], processing: [], discardPile: [] },
+      zones: { deck: ['j3', 'j2', 'j1'], processing: [], discardPile: [] },
       currentPlayerIndex: 0,
       phase: '准备',
       turn: { round: 1, phase: '准备', vars: {} },

@@ -127,7 +127,7 @@ describe('五谷丰登', () => {
       phase: '出牌',
       turn: { round: 1, phase: '出牌', vars: {} },
     });
-    state.zones = { deck: ['pa', 'pb', 'pc'], discardPile: [], processing: [] };
+    state.zones = { deck: ['pc', 'pb', 'pa'], discardPile: [], processing: [] };
     await harness.setup(state);
 
     const P1 = harness.player('P1');
@@ -310,7 +310,7 @@ describe('五谷丰登', () => {
       phase: '出牌',
       turn: { round: 1, phase: '出牌', vars: {} },
     });
-    state.zones = { deck: ['pa', 'pb'], discardPile: [], processing: [] };
+    state.zones = { deck: ['pb', 'pa'], discardPile: [], processing: [] };
     await harness.setup(state);
 
     const P1 = harness.player('P1');

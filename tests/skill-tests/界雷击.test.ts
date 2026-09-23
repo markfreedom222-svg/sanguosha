@@ -470,7 +470,7 @@ describe('界雷击', () => {
     // 界鬼道替换判定牌(直接 mutate frameCards)→ processedView 与 buildView 不对称
     const restoreCompare = disableAutoCompare();
     try {
-      state.zones = { deck: ['j1', 'dd1'], discardPile: [], processing: [] };
+      state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
       const P1 = harness.player('攻击者');

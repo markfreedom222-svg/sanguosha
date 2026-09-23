@@ -61,8 +61,8 @@ describe('双雄', () => {
   // ─── A1. 发动双雄:判定+获得判定牌+记颜色+跳过默认摸牌 ─────────
 
   it('摸牌阶段发动双雄 → 进行一次判定 → 获得判定牌 → 记颜色 → 跳过默认摸牌', async () => {
-    // 「判定」atom 从牌堆顶(deck[0])翻一张。
-    // deck=[j1(♥), topIsHeart] → 判定牌为 j1(♥,红色)→ 进入玩家手牌,记 color=red
+    // 「判定」atom 从牌堆顶(deck 末尾)翻一张。
+    // deck=[j1(♥)] → 判定牌为 j1(♥,红色)→ 进入玩家手牌,记 color=red
     // 跳过默认摸牌后:手牌=[j1](获得判定牌),未摸 2 张
     const restoreAutoCompare = disableAutoCompare();
     const j1 = makeCard('j1', '杀', '♥', '5');

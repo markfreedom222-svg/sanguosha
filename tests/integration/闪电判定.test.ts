@@ -285,7 +285,7 @@ describe('闪电:延时锦囊判定(plumbing & 端到端)', () => {
       currentPlayerIndex: 0,
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
-      zones: { deck: [jd1.id, jd2.id], discardPile: [], processing: [] },
+      zones: { deck: [jd2.id, jd1.id], discardPile: [], processing: [] },
     });
     await harness.setup(state);
 

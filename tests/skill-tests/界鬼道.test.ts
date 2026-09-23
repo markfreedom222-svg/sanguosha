@@ -148,8 +148,8 @@ describe('界鬼道', () => {
     });
     const restoreCompare = disableAutoCompare();
     try {
-      // 牌堆顶是 dd1(摸牌将抽到),其下是 j1(判定牌)
-      state.zones = { deck: ['j1', 'dd1'], discardPile: [], processing: [] };
+      // 牌堆末尾 = 牌堆顶:j1 先被判定消耗,dd1 其下(界鬼道摸牌将抽到)
+      state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
 
@@ -256,7 +256,7 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    state.zones = { deck: ['j1', 'dd1'], discardPile: [], processing: [] };
+    state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('界张角');
 

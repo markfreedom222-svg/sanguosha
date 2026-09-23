@@ -82,7 +82,7 @@ describe('界悲歌', () => {
         makePlayer({ index: 1, name: 'P1', character: '张飞', hand: ['k1'], skills: ['杀'] }),
       ],
       cardMap,
-      zones: { deck: [judgeCard.id, ...extraDeck.map((c) => c.id)], discardPile: [], processing: [] },
+      zones: { deck: [...extraDeck.map((c) => c.id), judgeCard.id], discardPile: [], processing: [] },
       currentPlayerIndex: 1,
       phase: '出牌',
       turn: { round: 1, phase: '出牌', vars: {} },

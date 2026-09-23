@@ -5,7 +5,7 @@
 //   判定区有多个延时锦囊时只结算一个就返回，剩余的永不结算。
 //
 // 用 order-dependent 判定牌验证「最后置入先结算」：
-//   牌堆顶 = deck[0] 最先被 判定 消耗（判定 atom shift 牌堆顶）。
+//   牌堆顶 = deck 末尾,最先被 判定 消耗（判定 atom pop 牌堆顶,与 摸牌 同向）。
 //   把最后置入的延时锦囊（闪电）配上一张会让其「传递/命中」的判定牌，
 //   其余延时锦囊配上可区分花色的判定牌 —— 结算顺序错位时观测状态会不同。
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -100,7 +100,7 @@ describe('判定阶段多延时锦囊循环', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    state.zones = { deck: ['j1', 'j2'], discardPile: [], processing: [] };
+    state.zones = { deck: ['j2', 'j1'], discardPile: [], processing: [] };
     await harness.setup(state);
 
     void applyAtom(harness.state, { type: '阶段开始', player: 1, phase: '判定' });
@@ -150,7 +150,7 @@ describe('判定阶段多延时锦囊循环', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    state.zones = { deck: ['j1', 'j2', 'j3'], discardPile: [], processing: [] };
+    state.zones = { deck: ['j3', 'j2', 'j1'], discardPile: [], processing: [] };
     await harness.setup(state);
 
     void applyAtom(harness.state, { type: '阶段开始', player: 1, phase: '判定' });

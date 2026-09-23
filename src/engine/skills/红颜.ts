@@ -38,7 +38,7 @@ export function onInit(skill: Skill, state: import('../types').GameState): () =>
       const atom = ctx.atom;
       // 仅小乔自己的判定:判定牌归小乔所有,红颜才生效
       if (atom.player !== ownerId) return;
-      const topId = ctx.state.zones.deck[0];
+      const topId = ctx.state.zones.deck[ctx.state.zones.deck.length - 1];
       if (!topId) return;
       const card: Card | undefined = ctx.state.cardMap[topId];
       if (!card) return;

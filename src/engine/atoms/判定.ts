@@ -18,15 +18,17 @@ export const 判定: AtomDefinition<{ player: number; judgeType: string }> = {
   },
   apply(state) {
     // 牌堆顶翻一张到栈顶结算帧的牌区(亮出判定牌)
+    // 方向约定:牌堆顶 = deck 末尾(与 摸牌/置创牌/整理牌堆 一致,见 引擎架构.md)。
     if (state.zones.deck.length === 0) return;
-    const topCardId = state.zones.deck.shift()!;
+    const topCardId = state.zones.deck.pop()!;
     const frame = state.settlementStack[state.settlementStack.length - 1];
     if (frame) frame.cards.push(topCardId);
     else state.zones.processing.push(topCardId);
   },
   toViewEvents(state, atom): ViewEventSplit {
     // 判定牌是公开信息:所有玩家都能看到花色点数+牌名
-    const topCardId = state.zones.deck[0];
+    // (toViewEvents 在 apply 之前调用,peek 方向须与 apply 的 pop 一致:牌堆顶 = 末尾)
+    const topCardId = state.zones.deck[state.zones.deck.length - 1];
     const card = topCardId ? state.cardMap[topCardId] : undefined;
     // 待判定牌:判定区同名延时锦囊(乐不思蜀/闪电/兵粮寸断)。
     // toViewEvents 在 apply 之前调用,判定区牌尚未被 after-hook 移除。

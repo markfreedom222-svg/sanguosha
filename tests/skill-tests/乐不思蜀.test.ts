@@ -413,7 +413,7 @@ describe('乐不思蜀', () => {
       currentPlayerIndex: 0,
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
-      zones: { deck: [judgeForLightning.id, judgeForIndulgence.id], discardPile: [], processing: [] },
+      zones: { deck: [judgeForIndulgence.id, judgeForLightning.id], discardPile: [], processing: [] },
     });
     await harness.setup(state);
 
