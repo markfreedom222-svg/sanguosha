@@ -255,6 +255,11 @@ export function PlayerCardLargeImpl({
               );
             }
             if (btn && inFreePlayWindow) {
+              // 细分禁用原因:限一次技能已发动(turnUsage 投影) vs 其他条件不满足
+              const usedThisTurn = !!p.turnUsage?.[`${s}/usedThisTurn`];
+              const disabledTitle = usedThisTurn
+                ? '本回合已发动过（每回合限一次）'
+                : '当前条件不满足（阶段/体力/目标等限制）';
               return (
                 <SkillTag
                   key={s}
@@ -263,7 +268,7 @@ export function PlayerCardLargeImpl({
                   description={desc}
                   className={cx(styles.skillBtn, styles.skillBtnDisabled)}
                   disabled
-                  title="当前不可发动（已发动或条件不满足）"
+                  title={disabledTitle}
                 />
               );
             }

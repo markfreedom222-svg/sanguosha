@@ -302,6 +302,22 @@ export const handCardDisabled = css`
   opacity: 0.4;
   cursor: default;
 `;
+// 弃牌窗口超时兜底预览:最后几秒高亮「若不改选将被自动弃置」的牌(橙色虚线警示),
+// 与紫色「可点选弃置」区分:紫=现在可以点,橙=不动手就会被弃。
+export const handCardTimeoutFallback = css`
+  border: 2px dashed #e67e22;
+  box-shadow: 0 0 10px rgba(230, 126, 34, 0.55);
+  animation: fallbackBlink 1s ease-in-out infinite;
+  @keyframes fallbackBlink {
+    0%,
+    100% {
+      box-shadow: 0 0 4px rgba(230, 126, 34, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 14px rgba(230, 126, 34, 0.7);
+    }
+  }
+`;
 export const handCardRespondable = css`
   border: 2px solid #ffd700;
   box-shadow: 0 0 10px rgba(255, 215, 0, 0.4);

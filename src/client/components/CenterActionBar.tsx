@@ -25,6 +25,8 @@ interface Props {
   pending: PendingView | null;
   /** respond 窗口(打出/不回应)是否激活 */
   isRespondPending: boolean;
+  /** 手牌中可回应牌张数;0 时显示「无牌可出 · 不回应」一键按钮,null=未知(无 filter) */
+  respondCandidateCount?: number | null;
   /** 是否显示「取消选择」 */
   showCancelSelection: boolean;
   /** 是否显示「结束回合」 */
@@ -46,6 +48,7 @@ export function CenterActionBar({
   play,
   pending,
   isRespondPending,
+  respondCandidateCount = null,
   showCancelSelection,
   showEndTurn,
   isMyTurn,
@@ -99,31 +102,51 @@ export function CenterActionBar({
 
   return (
       <div className={styles.actionBar}>
-        {isRespondPending && (
-          <>
+        {isRespondPending &&
+          (respondCandidateCount === 0 ? (
+            // 无牌可出:不再渲染置灰的「打出」,只留一个醒目的一键跳过
             <button
-              className={cx(
-                styles.playBtn,
-                (!selectedRespondCardId || !respondTargetReady) &&
-                  styles.btnDisabled,
-              )}
-              onClick={handlePlayRespond}
-              disabled={!selectedRespondCardId || !respondTargetReady}
+              className={styles.promptBtnPrimary}
+              onClick={() => handleRespond()}
+              title="没有可回应的牌（快捷键 空格）"
             >
-              打出
-              {respondNeedsTarget
-                ? respondTargetName
-                  ? ` → ${respondTargetName}`
-                  : ' (请选目标)'
-                : ''}
-            </button>
-            <button className={styles.promptBtn} onClick={() => handleRespond()}>
               {pending?.prompt?.type === 'useCardAndTarget'
-                ? '交出武器'
-                : '不回应'}
+                ? '没有武器可交 · 跳过'
+                : '无牌可出 · 不回应'}
+              <span className={styles.keyHint} aria-hidden>␣</span>
             </button>
-          </>
-        )}
+          ) : (
+            <>
+              <button
+                className={cx(
+                  styles.playBtn,
+                  (!selectedRespondCardId || !respondTargetReady) &&
+                    styles.btnDisabled,
+                )}
+                onClick={handlePlayRespond}
+                disabled={!selectedRespondCardId || !respondTargetReady}
+                title="快捷键 Enter（双击可回应牌可直接打出）"
+              >
+                打出
+                {respondNeedsTarget
+                  ? respondTargetName
+                    ? ` → ${respondTargetName}`
+                    : ' (请选目标)'
+                  : ''}
+                <span className={styles.keyHint} aria-hidden>⏎</span>
+              </button>
+              <button
+                className={styles.promptBtn}
+                onClick={() => handleRespond()}
+                title="快捷键 空格"
+              >
+                {pending?.prompt?.type === 'useCardAndTarget'
+                  ? '交出武器'
+                  : '不回应'}
+                <span className={styles.keyHint} aria-hidden>␣</span>
+              </button>
+            </>
+          ))}
         {canOperate &&
           transformMode &&
           transformMode.minCards > 1 &&
@@ -184,6 +207,7 @@ export function CenterActionBar({
                     : enough
                       ? ' (请选目标)'
                       : ` (还需选 ${transformMode.minCards - ids.length} 张)`}
+                {canSubmit && <span className={styles.keyHint} aria-hidden>⏎</span>}
               </button>
             );
           })()}
@@ -198,8 +222,10 @@ export function CenterActionBar({
                 <button
                   className={styles.playBtn}
                   onClick={() => handleTransformPlay('')}
+                  title="快捷键 Enter"
                 >
                   使用{transformMode.wrapperName}
+                  <span className={styles.keyHint} aria-hidden>⏎</span>
                 </button>
               );
             }
@@ -208,9 +234,11 @@ export function CenterActionBar({
                 className={cx(styles.playBtn, !selectedTarget && styles.btnDisabled)}
                 onClick={() => selectedTarget && handleTransformPlay(selectedTarget)}
                 disabled={!selectedTarget}
+                title="快捷键 Enter（需先选目标）"
               >
                 使用{transformMode.wrapperName}
                 {selectedTarget ? ` → ${selectedTarget}` : ' (请选目标)'}
+                {selectedTarget && <span className={styles.keyHint} aria-hidden>⏎</span>}
               </button>
             );
           })()}
@@ -226,8 +254,10 @@ export function CenterActionBar({
               )}
               onClick={handlePlayCard}
               disabled={!playButtonState.canPlay}
+              title="快捷键 Enter"
             >
               出牌{playButtonState.targetLabel}
+              <span className={styles.keyHint} aria-hidden>⏎</span>
             </button>
           )}
         {canOperate &&
@@ -245,11 +275,16 @@ export function CenterActionBar({
           ))}
         {/* 取消选择:与出牌/alt 按钮同一行(actionBar),仅已选且处自由出牌窗口时显示 */}
         {!transformMode && showCancelSelection && (
-          <CancelButton label="取消选择" onClick={cancelSelection} />
+          <CancelButton label="取消选择" onClick={cancelSelection} hotkey="Esc" />
         )}
         {showEndTurn && (
-          <button className={styles.endTurnBtn} onClick={handleEndTurn}>
+          <button
+            className={styles.endTurnBtn}
+            onClick={handleEndTurn}
+            title="快捷键 E"
+          >
             结束回合
+            <span className={styles.keyHint} aria-hidden>E</span>
           </button>
         )}
         {canOperate && isDiscardPhase && isPerspectiveAwaiting && (
@@ -266,8 +301,10 @@ export function CenterActionBar({
                 selectedForDiscard.length > discardMax
               }
               onClick={handleConfirmDiscard}
+              title="快捷键 Enter"
             >
               确认弃牌 ({selectedForDiscard.length}/{discardMin})
+              <span className={styles.keyHint} aria-hidden>⏎</span>
             </button>
             <button
               className={styles.promptBtn}
@@ -352,8 +389,10 @@ export function CenterActionBar({
                   )}
                   onClick={handleDistSubmit}
                   disabled={!canSubmit}
+                  title="快捷键 Enter"
                 >
                   {label}
+                  <span className={styles.keyHint} aria-hidden>⏎</span>
                 </button>
                 {distributeMode && (
                   <CancelButton

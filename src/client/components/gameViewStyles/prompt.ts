@@ -259,6 +259,19 @@ export const pickedByTag = css`
   text-decoration: line-through;
 `;
 
+// 按钮内快捷键角标(如 出牌 ⏎ / 不回应 ␣):小胶囊弱化显示,不承担视觉焦点
+export const keyHint = css`
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0.62;
+  vertical-align: 1px;
+`;
+
 // chooseOption 武将牌面板按钮(化身:势力色底+武将名+技能列表)
 export const chooseOptionCard = css`
   display: flex;

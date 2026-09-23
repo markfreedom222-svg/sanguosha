@@ -25,6 +25,43 @@ import { displaySkillName } from '../utils/skillDisplay';
 
 const DEFAULT_SKILLS = new Set(ENGINE_DEFAULT_SKILLS);
 
+/** 把引擎原始 mark 集合聚合为玩家可读徽章。
+ *  mark id 约定 `技能名/属性:N`(N=state.seq 计数后缀):计数型标记
+ *  (界血裔/裔:17、界血裔/裔:18 …)合并为「血裔·裔 ×2」一条;无命名空间前缀
+ *  的 id 原样展示。payload 只进 tooltip,不再把 JSON 塞到座位面板上。 */
+function groupDisplayMarks(marks: PlayerSeatProps['player']['marks']) {
+  const groups = new Map<
+    string,
+    { labelBase: string; titleBase: string; count: number; payloads: string[] }
+  >();
+  for (const m of marks) {
+    // 'chained' 已由卡边框铁链光泽 + ⛓ 徽章代表,这里不重复显示
+    if (m.id === 'chained') continue;
+    const slash = m.id.indexOf('/');
+    const skill = slash > 0 ? m.id.slice(0, slash) : '';
+    const attr = (slash > 0 ? m.id.slice(slash + 1) : m.id).split(':')[0] || m.id;
+    const key = skill ? `${skill}/${attr}` : attr;
+    let g = groups.get(key);
+    if (!g) {
+      const skillLabel = skill ? displaySkillName(skill) : '';
+      g = {
+        labelBase: skillLabel ? `${skillLabel}·${attr}` : attr,
+        titleBase: key,
+        count: 0,
+        payloads: [],
+      };
+      groups.set(key, g);
+    }
+    g.count += 1;
+    if (m.payload !== undefined && m.payload !== null) g.payloads.push(JSON.stringify(m.payload));
+  }
+  return [...groups.entries()].map(([key, g]) => ({
+    key,
+    label: g.count > 1 ? `${g.labelBase} ×${g.count}` : g.labelBase,
+    title: g.payloads.length > 0 ? `${g.titleBase}（${g.payloads.join('、')}）` : g.titleBase,
+  }));
+}
+
 export interface PlayerSeatProps {
   player: GameView['players'][number];
   index: number;
@@ -57,6 +94,10 @@ export interface PlayerSeatProps {
   skillActions?: SkillActionDef[];
   /** 该座次对应玩家已断线(重连宽限期内),座位卡显示离线角标并置灰 */
   isDisconnected?: boolean;
+  /** 选目标阶段:到我的实际距离(含马修正),非 null 时在座位卡上显示「距N」角标 */
+  seatDistance?: number | null;
+  /** 选目标阶段:该座次不可选的原因(hover title,如「距离 3，超出攻击范围 1」) */
+  untargetableReason?: string | null;
 }
 
 function PlayerSeatViewImpl({
@@ -80,6 +121,8 @@ function PlayerSeatViewImpl({
   hideIdentity = true,
   skillActions: _skillActions, // 预留:未来用于在座位卡上显示可点使用的技能按钮
   isDisconnected = false,
+  seatDistance = null,
+  untargetableReason = null,
 }: PlayerSeatProps) {
   useSkillDescReady(); // 技能模块加载后重渲染,确保 title 中 getSkillDescription 命中
   void turnGlowVersion; // 预留:未来用于触发不同强度的回合光环动画
@@ -134,6 +177,8 @@ function PlayerSeatViewImpl({
       style={{ '--faction-color': factionColor } as React.CSSProperties}
       onClick={() => isClickable && onTargetClick(player.name)}
       onDoubleClick={() => onSeatDoubleClick?.(index)}
+      // 选目标阶段不可选时给出原因(原生 title):距离不足/不可选自己/阵亡等
+      title={isUntargetable && untargetableReason ? `不可选择：${untargetableReason}` : undefined}
     >
       {/* 卡上方名牌:横向暗条(宽=卡宽)。左:身份小方章 + 座号 + 玩家名,右:徽章组(我/回合/⛓/离线) */}
       <div className={cx(seatNamePlate, isCurrentPlayer && seatNamePlateActive)}>
@@ -217,6 +262,15 @@ function PlayerSeatViewImpl({
           <span className={seatHandBadge} title={`手牌: ${player.handCount}`}>
             🂠 {player.handCount}
           </span>
+          {/* 选目标阶段距离角标:卡内左下角「距N」(仅 needsTarget 时上层传入) */}
+          {needsTarget && seatDistance != null && (
+            <span
+              className={seatDistanceBadge}
+              title={`与你的距离: ${seatDistance}${untargetableReason ? `（${untargetableReason}）` : ''}`}
+            >
+              距 {seatDistance}
+            </span>
+          )}
           {/* 死亡印章:身份+阵亡 两行红字大印(立绘同时 grayscale),对齐官方「反贼/阵亡」印 */}
           {isDead && (
             <span className={seatDeadStamp} aria-hidden>
@@ -264,7 +318,14 @@ function PlayerSeatViewImpl({
               const icon = EQUIP_SLOT_ICON[slot as EquipSlot] ?? '💎';
               const suitColor = SUIT_COLOR[card?.suit ?? '♠'] ?? '#ccc';
               return (
-                <span key={slot} title={card ? `${card.name}(${slot})` : String(cardId)}>
+                <span
+                  key={slot}
+                  title={
+                    card
+                      ? `${card.name}（${slot}）${card.description ? `\n${card.description}` : ''}`
+                      : String(cardId)
+                  }
+                >
                   {icon}
                   {card?.name ?? cardId}
                   {card && (
@@ -321,16 +382,15 @@ function PlayerSeatViewImpl({
             </div>
           );
         })()}
+        {/* 标记行:原始 id(`技能名/属性:N`)聚合为「属性 ×N」徽章,明细进 tooltip */}
         {(() => {
-          // 'chained' 已由卡边框铁链光泽 + ⛓ 徽章代表,这里不重复显示原始标记名
-          const visibleMarks = player.marks.filter((m) => m.id !== 'chained');
-          if (visibleMarks.length === 0) return null;
+          const badges = groupDisplayMarks(player.marks);
+          if (badges.length === 0) return null;
           return (
             <div className={markRow}>
-              {visibleMarks.map((m) => (
-                <span key={m.id} className={markTag}>
-                  {m.id}
-                  {m.payload ? `(${JSON.stringify(m.payload)})` : ''}
+              {badges.map((b) => (
+                <span key={b.key} className={markTag} title={b.title}>
+                  {b.label}
                 </span>
               ))}
             </div>
@@ -367,6 +427,8 @@ function playerSeatPropsEqual(prev: PlayerSeatProps, next: PlayerSeatProps): boo
     prev.turnGlowVersion === next.turnGlowVersion &&
     prev.hideIdentity === next.hideIdentity &&
     prev.isDisconnected === next.isDisconnected &&
+    prev.seatDistance === next.seatDistance &&
+    prev.untargetableReason === next.untargetableReason &&
     // 函数 props（引用相等，依赖父组件 useCallback）
     prev.onTargetClick === next.onTargetClick &&
     prev.onSeatDoubleClick === next.onSeatDoubleClick &&
@@ -622,6 +684,21 @@ const seatCharImgDead = css`
 // 横置(铁索):立绘铁灰冷色调(降饱和压亮),与边框 chainPulse 呼应
 const seatCharImgChained = css`
   filter: saturate(0.45) brightness(0.92);
+`;
+// 选目标阶段距离角标:卡内左下角小暗章「距 N」,与手牌数角标(右下)对称
+const seatDistanceBadge = css`
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  z-index: 2;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: bold;
+  color: #bcd0f5;
+  background: rgba(20, 22, 34, 0.78);
+  border: 1px solid rgba(150, 170, 220, 0.35);
+  pointer-events: none;
 `;
 // 卡内左缘竖带:自上而下渐变暗带(rgba(0,0,0,.62)→透明),宽约 26px
 const seatSideBand = css`

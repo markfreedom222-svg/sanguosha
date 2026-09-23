@@ -50,6 +50,12 @@ export interface HandCardProps {
   isDistributeActive?: boolean;
   /** 点击手牌(传入 card 对象,稳定引用避免内联闭包破坏 memo) */
   onCardClick: (card: Card) => void;
+  /** 双击手牌:快速提交(可回应牌立即打出 / 无目标牌立即出牌),由 usePlayInteraction 仲裁 */
+  onCardDoubleClick?: (card: Card) => void;
+  /** 弃牌窗口超时兜底预览:此牌将在超时时被自动弃置(高亮警示 + hint 文案) */
+  isTimeoutFallback?: boolean;
+  /** 附在描述浮层底部的提示(置灰原因 / 超时弃置预告),为 null 不显示 */
+  hint?: string | null;
 }
 
 export function HandCardImpl(props: HandCardProps) {
@@ -72,6 +78,9 @@ export function HandCardImpl(props: HandCardProps) {
     isDistributeAllocated = false,
     isDistributeActive = false,
     onCardClick,
+    onCardDoubleClick,
+    isTimeoutFallback = false,
+    hint = null,
   } = props;
 
   const canClick =
@@ -94,6 +103,7 @@ export function HandCardImpl(props: HandCardProps) {
     description: card.description,
     originName: isTransformMatch && transformWrapperName ? card.name : undefined,
     suitColor,
+    hint,
   });
 
   return (
@@ -129,6 +139,7 @@ export function HandCardImpl(props: HandCardProps) {
         isDistributeSelected && styles.handCardDistributeSelected,
         isDistributeAllocated && styles.handCardDistributeAllocated,
         isDistributeDisabled && styles.handCardDisabled,
+        isTimeoutFallback && styles.handCardTimeoutFallback,
       )}
       style={
         {
@@ -141,6 +152,11 @@ export function HandCardImpl(props: HandCardProps) {
         // 长按触发后抬起的 click / 浮层开着时点卡关闭:均被浮层吞掉,不选牌
         if (tip.consumeClick()) return;
         if (canClick && !isTransformDisabled && !isDistributeDisabled) onCardClick(card);
+      }}
+      onDoubleClick={() => {
+        if (tip.consumeClick()) return;
+        if (canClick && !isTransformDisabled && !isDistributeDisabled)
+          onCardDoubleClick?.(card);
       }}
       onMouseEnter={tip.bind.onMouseEnter}
       onMouseLeave={tip.bind.onMouseLeave}
@@ -189,7 +205,10 @@ function handCardPropsEqual(prev: HandCardProps, next: HandCardProps): boolean {
     prev.isDistributeSelected === next.isDistributeSelected &&
     prev.isDistributeAllocated === next.isDistributeAllocated &&
     prev.isDistributeActive === next.isDistributeActive &&
-    prev.onCardClick === next.onCardClick
+    prev.isTimeoutFallback === next.isTimeoutFallback &&
+    prev.hint === next.hint &&
+    prev.onCardClick === next.onCardClick &&
+    prev.onCardDoubleClick === next.onCardDoubleClick
   );
 }
 

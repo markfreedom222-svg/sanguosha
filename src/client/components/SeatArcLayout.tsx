@@ -54,19 +54,27 @@ export interface SeatArcLayoutProps {
    *  避免牌还没翻完倒计时已扣掉 flip 时长(bar 与 prompt 不同步)。
    *  不伪造暂停——deadline 仍是服务端真实时钟,动画结束后恢复显示真实剩余。 */
   suppressCountdown?: boolean;
+  /** 广播型 pending(无懈可击等)当前视角已点「不回应」:隐藏自己座位的倒计时条。
+   *  与 GameView 底部操作坞的 broadcastSkipped 门控同源——玩家已跳过,
+   *  自己的座位条不再倒数(其他仍在等待的座次照常显示)。 */
+  broadcastSkipped?: boolean;
+  /** 选目标阶段座位提示:返回该座次的距离(徽章展示)与不可选原因(title)。 */
+  seatTargetInfo?: (idx: number) => { distance: number | null; reason: string | null };
   /** 贴在座位区底部的操作坞(提示/倒计时/主按钮) */
   bottomSlot?: ReactNode;
 }
 
 export function SeatArcLayout(props: SeatArcLayoutProps) {
-  // 共享数据来自 GameViewCtx(view/perspectiveName)
-  const { view, perspectiveName } = useGameView();
+  // 共享数据来自 GameViewCtx(view/perspectiveName/perspectiveIdx)
+  const { view, perspectiveName, perspectiveIdx } = useGameView();
   const {
     orderedPlayers,
     currentPlayerName,
     selectedNeedsTarget,
     selectedTargetNames,
     isTargetable,
+    seatTargetInfo,
+    broadcastSkipped,
     onTargetClick,
     onSeatDoubleClick,
     damageFlashIndices,
@@ -87,8 +95,14 @@ export function SeatArcLayout(props: SeatArcLayoutProps) {
           const { leftPct, topPct } = arcLayout(totalOthers, i);
           // 门控集中在 deadline 派生这一处(渲染条件 seatDeadline !== null 不动),
           // 翻牌动画期间所有座位条统一隐藏,动画结束自动恢复为真实剩余时间。
-          const seatDeadline = suppressCountdown ? null : deadlineForSeat(view, realIdx);
+          // 广播已跳过的自己座位同样隐藏(与操作坞 CountdownBar 的 broadcastSkipped 门控同源)。
+          let seatDeadline = suppressCountdown ? null : deadlineForSeat(view, realIdx);
+          if (broadcastSkipped && realIdx === perspectiveIdx && (view.pending?.target ?? 0) < 0)
+            seatDeadline = null;
           const seatTotalMs = view.pending?.totalMs ?? DEFAULT_COUNTDOWN_TOTAL_MS;
+          const targetInfo = selectedNeedsTarget
+            ? (seatTargetInfo?.(realIdx) ?? { distance: null, reason: null })
+            : { distance: null, reason: null };
           return (
             <div
               key={player.name}
@@ -116,6 +130,8 @@ export function SeatArcLayout(props: SeatArcLayoutProps) {
                 isTurnGlow={player.name === currentPlayerName && turnVersion > 0}
                 turnGlowVersion={turnVersion}
                 isDisconnected={disconnectedSeats?.has(realIdx) ?? false}
+                seatDistance={targetInfo.distance}
+                untargetableReason={targetInfo.reason}
               />
               {seatDeadline !== null && (
                 <CountdownBar deadline={seatDeadline} totalMs={seatTotalMs} />

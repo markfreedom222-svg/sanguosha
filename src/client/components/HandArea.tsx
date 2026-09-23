@@ -39,6 +39,12 @@ interface Props {
   handleDragStart: (idx: number) => void;
   /** 拖拽重排 handler(useHandReorder) */
   handleDrop: (targetIdx: number) => void;
+  /** 出牌阶段置灰牌的原因(hover 提示,如「本回合杀次数已用完」);无原因返回 null */
+  disabledReason?: (card: Card) => string | null;
+  /** 双击手牌:可回应牌直接打出 / 无目标牌直接出(usePlayInteraction 统一处理) */
+  onCardDoubleClick?: (card: Card) => void;
+  /** 弃牌窗口超时兜底预览:最后 5 秒内将被自动弃置的牌 id 集合(高亮警示) */
+  timeoutFallbackIds?: Set<string> | null;
   /** 自由出牌可选判定(与数字键快捷键同源) */
   canPlayHandCard: (card: Card) => boolean;
   /** respond 回应可选判定(与数字键快捷键同源) */
@@ -67,6 +73,9 @@ export function HandArea({
   canPlayHandCard,
   isRespondableCard,
   canDiscardClick,
+  disabledReason,
+  onCardDoubleClick,
+  timeoutFallbackIds,
   isMyAwaiting,
   isMyTurn,
   onReorderHand,
@@ -177,6 +186,9 @@ export function HandArea({
             const isDistSelected = isDistributeActive && distSelected.has(card.id);
             const isDistAllocated =
               isDistributeActive && distAllocations.some((a) => a.cardIds.includes(card.id));
+            // 弃牌超时兜底预览:命中且未选中(已选中的牌会被玩家显式弃置)时高亮
+            const isTimeoutFallback =
+              !!timeoutFallbackIds?.has(card.id) && !isDiscardSelected;
             return (
               <div
                 key={card.id}
@@ -206,6 +218,13 @@ export function HandArea({
                   isDistributeAllocated={isDistAllocated}
                   isDistributeActive={isDistributeActive}
                   onCardClick={handleCardClick}
+                  onCardDoubleClick={onCardDoubleClick}
+                  isTimeoutFallback={isTimeoutFallback}
+                  hint={
+                    isTimeoutFallback
+                      ? '超时未确认将自动弃置此牌'
+                      : (disabledReason?.(card) ?? null)
+                  }
                 />
               </div>
             );

@@ -52,17 +52,17 @@ describe('回放 UI 渲染:装备随 step 变化', () => {
     const { container, rerender } = render(<GameViewComponent view={v0} onAction={() => {}} readOnly />);
     // step 0:无装备
     let titles = Array.from(container.querySelectorAll('[title]')).map(e => (e as HTMLElement).getAttribute('title'));
-    expect(titles).not.toContain('诸葛连弩(武器)');
+    expect(titles).not.toContain('诸葛连弩（武器）');
 
     // step 1:有武器
     rerender(<GameViewComponent view={v1} onAction={() => {}} readOnly />);
     titles = Array.from(container.querySelectorAll('[title]')).map(e => (e as HTMLElement).getAttribute('title'));
-    expect(titles).toContain('诸葛连弩(武器)');
+    expect(titles).toContain('诸葛连弩（武器）');
 
     // 切回无装备
     rerender(<GameViewComponent view={v0} onAction={() => {}} readOnly />);
     titles = Array.from(container.querySelectorAll('[title]')).map(e => (e as HTMLElement).getAttribute('title'));
-    expect(titles).not.toContain('诸葛连弩(武器)');
+    expect(titles).not.toContain('诸葛连弩（武器）');
   });
 });
 
@@ -119,6 +119,21 @@ describe('横置(铁索连环)前端展示', () => {
     const badges = container.querySelectorAll('[title="横置·铁索连环"]');
     // 视角玩家自身为大卡,至少一个徽章
     expect(badges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // 标记人性化:原始 id(技能名/属性:N)不泄漏到座位面板,计数型标记聚合为「属性 ×N」
+  it('座位卡标记行:计数型标记聚合展示,原始 id/payload 不外泄', () => {
+    const view = makeChainView([]);
+    view.players[1].marks = [
+      { id: '界血裔/裔:17' },
+      { id: '界血裔/裔:18' },
+      { id: '屯田/田:1', payload: '♠5' },
+    ] as unknown as GameView['players'][number]['marks'];
+    render(<GameViewComponent view={view} onAction={() => {}} readOnly />);
+    expect(screen.getByText('血裔·裔 ×2')).toBeTruthy();
+    expect(screen.getByText('屯田·田')).toBeTruthy();
+    expect(screen.queryByText(/界血裔\/裔:/)).toBeNull();
+    expect(screen.queryByText(/♠5/)).toBeNull();
   });
 });
 

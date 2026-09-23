@@ -192,6 +192,15 @@ export interface PlayInteractionResult {
   /** 多卡转化:反选(超 maxCards 时按 FIFO 取尾部) */
   handleTransformInvert: () => void;
   isTargetable: (i: number) => boolean;
+  /** 清空回应选牌/换目标(Esc 快捷键用):与 pending 切换自动清空同一对 setter */
+  clearRespondSelection: () => void;
+  /** 双击手牌:可回应牌直接打出(无需目标时);自由出牌无目标牌直接出,
+   *  需目标的退化为单击选中。两步确认仍保留——双击是快捷路径,不是替代。 */
+  handleCardDoubleClick: (card: Card) => void;
+  /** 转化提交派生(与 CenterActionBar「使用」按钮同源,Enter 快捷键复用) */
+  transformSubmit: { needsTarget: boolean; canSubmit: boolean } | null;
+  /** distribute 提交派生(与 CenterActionBar 提交按钮同源,Enter 快捷键复用) */
+  distSubmit: { canSubmit: boolean; label: string } | null;
   // distribute handlers
   handleDistToggle: (id: string) => void;
   /** distribute select 模式(制衡):全选所有候选,截断到 maxTotal */
@@ -969,6 +978,84 @@ export function usePlayInteraction(
     handleRespond(cardId);
   }, [selectedRespondCardId, respondNeedsTarget, respondTargetName, handleRespond]);
 
+  const clearRespondSelection = useCallback(() => {
+    setSelectedRespondCardId(null);
+    setRespondTargetName(null);
+  }, []);
+
+  // 双击手牌(快速提交);误触风险由「仅无目标牌即时提交」约束兜底:
+  //   - 回应窗口:可回应牌双击直接打出;需目标的(借刀杀人出杀)退化为选中,仍需点目标+「打出」。
+  //   - 自由出牌:无目标牌(装备/无中生有/桃酒等)双击直接出;需目标的退化为单击选中。
+  //   - 弃牌/转化/distribute 窗口:多选语义,双击不接(保持 toggle,由 hover 提示仍可见)。
+  const handleCardDoubleClick = useCallback(
+    (card: Card) => {
+      if (!canOperate || isDistributeActive) return;
+      if (isDiscardPhase && isPerspectiveAwaiting) return;
+      if (transformMode) return;
+      // 回应窗口
+      if (isMyAwaiting) {
+        if (isKillRespondContext) return; // 转化杀路径留在转化模式,双击不接
+        if (!pendingRespondInfo?.cardFilter?.(card)) return;
+        if (respondNeedsTarget) {
+          setSelectedRespondCardId(card.id);
+          return;
+        }
+        setSelectedRespondCardId(null);
+        handleRespond(card.id);
+        return;
+      }
+      // 自由出牌窗口
+      if (!isMyTurn) return;
+      const useAction = findUseActionForCard(skillActions, card);
+      if (!useAction || !isActiveAction(useAction, { view, perspectiveIdx })) return;
+      const rules = derivePlayRules(
+        useAction.prompt.type === 'useCardAndTarget' ? useAction.prompt.targetFilter : null,
+        useAction.prompt.type === 'useCardAndTarget' && !!useAction.prompt.selfTarget,
+      );
+      if (rules.needsTarget && !rules.selfTarget) {
+        // 需目标:选中交给「点目标/出牌按钮」路径
+        setSelectedCardId(card.id);
+        setSelectedTarget(null);
+        return;
+      }
+      const params = buildPlayParams(
+        view.players,
+        perspectiveIdx,
+        card,
+        rules,
+        null,
+        null,
+        [],
+      );
+      if (!params) return;
+      const cardEl = handListRef.current?.querySelector(
+        `[data-card-id="${card.id}"]`,
+      ) as HTMLElement | null;
+      if (cardEl) createCardFlyAnimation(cardEl, card);
+      send(useAction.skillId, 'use', params);
+      setSelectedCardId(null);
+      setSelectedTarget(null);
+    },
+    [
+      canOperate,
+      isDistributeActive,
+      isDiscardPhase,
+      isPerspectiveAwaiting,
+      transformMode,
+      isMyAwaiting,
+      isKillRespondContext,
+      pendingRespondInfo,
+      respondNeedsTarget,
+      handleRespond,
+      isMyTurn,
+      skillActions,
+      view,
+      perspectiveIdx,
+      handListRef,
+      send,
+    ],
+  );
+
   const handleCardClick = useCallback(
     (card: Card) => {
       // distribute 选牌
@@ -1185,6 +1272,48 @@ export function usePlayInteraction(
     setSelectedTarget(null);
   }, []);
 
+  // ─── 提交派生(与 CenterActionBar 按钮 enabled 同源;Enter 快捷键复用)───
+  // 转化:多卡(minCards>1)按选中数;单卡按 selectedCardId。回应路径(被询问杀)无需目标。
+  const transformSubmit = (() => {
+    if (!transformMode || isDistributeActive) return null;
+    const ids = transformMode.minCards > 1
+      ? transformMode.selectedCardIds
+      : selectedCardId
+        ? [selectedCardId]
+        : [];
+    const enough = ids.length >= transformMode.minCards && ids.length <= transformMode.maxCards;
+    const needsTarget =
+      !isKillRespondContext &&
+      (transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true);
+    const canSubmit = enough && (!needsTarget || !!selectedTarget);
+    return { needsTarget, canSubmit };
+  })();
+
+  // distribute 提交:与 CenterActionBar 的三分支(select / 外部目标 / allocate)同源。
+  const distSubmit = (() => {
+    if (!activeDistribute) return null;
+    const mode = activeDistribute.prompt.mode ?? 'allocate';
+    const minTotal = activeDistribute.prompt.minTotal ?? 1;
+    const maxTotal = activeDistribute.prompt.maxTotal ?? 99;
+    if (mode === 'select') {
+      return {
+        canSubmit: distSelected.size >= minTotal && distSelected.size <= maxTotal,
+        label: `确认(${distSelected.size})`,
+      };
+    }
+    if (activeDistribute.externalTargetSelection) {
+      return {
+        canSubmit:
+          distSelected.size >= minTotal &&
+          distSelected.size <= maxTotal &&
+          !!distTargetName,
+        label: `确定(${distSelected.size})${distTargetName ? ` → ${distTargetName}` : ''}`,
+      };
+    }
+    const total = distAllocations.flatMap((a) => a.cardIds).length;
+    return { canSubmit: total >= minTotal, label: `提交分配(${total})` };
+  })();
+
   const clearDiscard = useCallback(() => setSelectedForDiscard([]), []);
 
   return {
@@ -1227,6 +1356,10 @@ export function usePlayInteraction(
     handleTransformSelectAll,
     handleTransformInvert,
     isTargetable,
+    clearRespondSelection,
+    handleCardDoubleClick,
+    transformSubmit,
+    distSubmit,
     handleDistToggle,
     handleDistSelectAll,
     handleDistInvert,

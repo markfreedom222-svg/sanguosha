@@ -23,7 +23,9 @@ import * as styles from './gameViewStyles';
 import type { GameView as EngineGameView, Card, Json, ViewEvent } from '../../engine/types';
 import { getAtomDef } from '../../engine/core/atom';
 import { CountdownBar } from './CountdownBar';
-import { DEFAULT_COUNTDOWN_TOTAL_MS } from '../hooks/useCountdown';
+import { DEFAULT_COUNTDOWN_TOTAL_MS, useCountdownSeconds } from '../hooks/useCountdown';
+import { viewSlashMax, viewSlashUsed } from '../../engine/rules/action-active';
+import { viewEffectiveDistance } from '../../engine/rules/viewDistance';
 import { PlayerCardLarge } from './PlayerCardLarge';
 import { EventBanner } from './EventBanner';
 import { ActionOverlay } from './ActionOverlay';
@@ -273,6 +275,7 @@ export function GameViewComponentImpl({
   });
   const {
     selectedCardId,
+    selectedCard,
     selectedTarget,
     selectedKillTarget,
     selectedMultiTargets,
@@ -299,6 +302,13 @@ export function GameViewComponentImpl({
     handlePlayRespond,
     handleEndTurn,
     isTargetable,
+    clearRespondSelection,
+    handleCardDoubleClick,
+    handleTransformPlay,
+    handleConfirmDiscard,
+    handleDistSubmit,
+    transformSubmit,
+    distSubmit,
     cancelTransform,
     cancelSelection,
   } = play;
@@ -334,6 +344,76 @@ export function GameViewComponentImpl({
     (card: Card) =>
       !isDistributeActive && isMyAwaiting && !!pendingRespondInfo?.cardFilter?.(card),
     [isDistributeActive, isMyAwaiting, pendingRespondInfo],
+  );
+
+  // ─── 不可用手牌的原因提示(出牌阶段置灰卡的 hover 说明,与 canPlayHandCard 同源)───
+  // 只在「出牌阶段本应可出却置灰」时给原因;其他窗口(回应/弃牌/别人回合)的置灰属正常模式。
+  const handDisabledReason = useCallback(
+    (card: Card): string | null => {
+      if (canPlayHandCard(card)) return null;
+      if (!isMyTurn || view.phase !== '出牌' || pending) return null;
+      if (!hasUseEntry(card)) return '仅用于响应，出牌阶段不能主动使用';
+      const useAction = findUseActionForCard(skillActions, card);
+      if (useAction && isActiveAction(useAction, { view, perspectiveIdx })) return null;
+      if (card.name === '杀') {
+        const max = viewSlashMax(view, perspectiveIdx);
+        const used = viewSlashUsed(view, perspectiveIdx);
+        if (Number.isFinite(max) && used >= max)
+          return `本回合杀次数已用完（${used}/${max}）`;
+        return '本回合不能使用杀（次数已尽或被限制）';
+      }
+      if (card.name === '桃') {
+        const me = view.players[perspectiveIdx];
+        if (me && me.health >= me.maxHealth) return '体力已满，不需要使用桃';
+      }
+      if (
+        card.name === '酒' &&
+        view.players[perspectiveIdx]?.turnUsage?.['酒/usedThisTurn']
+      ) {
+        return '本回合已使用过酒';
+      }
+      return '当前不满足使用条件（阶段/次数/目标限制）';
+    },
+    [canPlayHandCard, isMyTurn, view, pending, skillActions, perspectiveIdx],
+  );
+
+  // ─── 弃牌超时兜底预览(与「不回应」/超时兜底同策略:取手牌末尾 discardMin 张)───
+  // 最后 5 秒内高亮将被自动弃置的牌,避免静默弃牌惊吓;已选满 min 时不预览(走确认分支)。
+  const countdownSec = useCountdownSeconds(deadline);
+  const discardFallbackIds = useMemo(() => {
+    if (!isDiscardPhase || !isPerspectiveAwaiting) return null;
+    if (countdownSec == null || countdownSec > 5) return null;
+    if (selectedForDiscard.length >= discardMin) return null;
+    return new Set(perspectiveHand.slice(-discardMin).map((c) => c.id));
+  }, [
+    isDiscardPhase,
+    isPerspectiveAwaiting,
+    countdownSec,
+    selectedForDiscard.length,
+    discardMin,
+    perspectiveHand,
+  ]);
+
+  // ─── 选目标阶段座位提示:距离徽章 + 不可选原因(hover title)───
+  const seatTargetInfo = useCallback(
+    (idx: number): { distance: number | null; reason: string | null } => {
+      const empty = { distance: null, reason: null };
+      const player = view.players[idx];
+      if (!player) return empty;
+      const distance = viewEffectiveDistance(view.players, perspectiveIdx, idx);
+      if (!Number.isFinite(distance)) return empty;
+      if (!player.alive) return { distance, reason: '已阵亡' };
+      if (isTargetable(idx)) return { distance, reason: null };
+      if (idx === perspectiveIdx) return { distance, reason: '不能选择自己' };
+      if (selectedCard?.name === '杀' || isKillRespondContext) {
+        const range = view.players[perspectiveIdx]?.distanceVars?.attackRange ?? 1;
+        if (distance > range) {
+          return { distance, reason: `距离 ${distance}，超出攻击范围 ${range}` };
+        }
+      }
+      return { distance, reason: '不满足目标条件' };
+    },
+    [view, perspectiveIdx, isTargetable, selectedCard, isKillRespondContext],
   );
 
   // ─── stabilized callbacks（引用稳定，避免子组件 memo 失效） ───
@@ -387,6 +467,13 @@ export function GameViewComponentImpl({
     !isDiscardPhase &&
     !broadcastSkipped &&
     (pending?.prompt?.type === 'useCard' || pending?.prompt?.type === 'useCardAndTarget');
+
+  // ─── 回应窗口候选数(0 时动作条显示「一键不回应」,替代置灰的「打出」)───
+  // 注意必须在 isRespondPending 定义之后(同源计算条件)。
+  const respondCandidateCount = useMemo(() => {
+    if (!isRespondPending || !pendingRespondInfo?.cardFilter) return null;
+    return perspectiveHand.filter(pendingRespondInfo.cardFilter).length;
+  }, [isRespondPending, pendingRespondInfo, perspectiveHand]);
   const showCenterActionBar =
     isRespondPending ||
     (canOperate && !!selectedActive && !!transformMode) ||
@@ -407,18 +494,43 @@ export function GameViewComponentImpl({
     readOnly
       ? {}
       : {
-          // Enter:respond 窗口优先于出牌窗口(同时存在时回应询问更紧急)
+          // Enter:respond 窗口优先;其后弃牌/转化/distribute 各自窗口的确认键(与按钮 enabled 同源);
+          // 最后是自由出牌的「出牌」键。
           enter: () => {
             if (isRespondPending) {
               if (selectedRespondCardId && respondTargetReady) handlePlayRespond();
-            } else if (playButtonState?.canPlay) {
-              handlePlayCard();
+              return;
             }
+            if (isDiscardPhase && isPerspectiveAwaiting) {
+              if (
+                selectedForDiscard.length >= discardMin &&
+                selectedForDiscard.length <= discardMax
+              ) {
+                handleConfirmDiscard();
+              }
+              return;
+            }
+            if (transformMode) {
+              if (transformSubmit?.canSubmit) {
+                handleTransformPlay(transformSubmit.needsTarget ? selectedTarget! : '');
+              }
+              return;
+            }
+            if (isDistributeActive) {
+              if (distSubmit?.canSubmit) handleDistSubmit();
+              return;
+            }
+            if (playButtonState?.canPlay) handlePlayCard();
           },
-          // Esc:转化模式最深,先退转化;其次取消已选牌
+          // Esc:转化模式最深,先退转化;其次撤销回应选牌/目标;再次取消出牌选择
           escape: () => {
-            if (transformMode) cancelTransform();
-            else if (showCancelSelection) cancelSelection();
+            if (transformMode) {
+              cancelTransform();
+            } else if (selectedRespondCardId || respondTargetName) {
+              clearRespondSelection();
+            } else if (showCancelSelection) {
+              cancelSelection();
+            }
           },
           // Space:不回应。preventDefault 阻止页面滚动(空格默认滚动行为)
           space: (e) => {
@@ -431,16 +543,16 @@ export function GameViewComponentImpl({
           e: () => {
             if (showEndTurn) handleEndTurn();
           },
-          // 1-9:选第 n 张手牌,三个窗口与点击走同一 handleCardClick(toggle 逻辑唯一):
+          // 1-9 + 0:选第 n 张手牌(0=第 10 张),三个窗口与点击走同一 handleCardClick(toggle 逻辑唯一):
           //   自由出牌(仅出牌阶段无 pending,置灰牌无效)、respond 回应(filter 排除无效)、
           //   弃牌多选。转化/distribute 模式的候选校验由 handleCardClick 内部分支兜底,
           //   键盘路径不绕过任何选中校验。输入框焦点过滤由 useHotkeys 统一处理。
           ...Object.fromEntries(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9].map(
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(
               (n): [string, () => void] => [
                 String(n),
                 () => {
-                  const card = perspectiveHand[n - 1];
+                  const card = perspectiveHand[n === 0 ? 9 : n - 1];
                   if (!card) return;
                   const inFreePlay = isMyTurn && view.phase === '出牌' && !pending;
                   const transformActive = !!transformMode && (isMyTurn || isKillRespondContext);
@@ -566,6 +678,8 @@ export function GameViewComponentImpl({
                             : []
                 }
                 isTargetable={isTargetable}
+                seatTargetInfo={seatTargetInfo}
+                broadcastSkipped={broadcastSkipped}
                 onTargetClick={handleTargetClick}
                 onSeatDoubleClick={onSeatDoubleClick}
                 damageFlashIndices={anim.damageFlashIndices}
@@ -633,7 +747,11 @@ export function GameViewComponentImpl({
                             : ''}{' '}
                           · 源技能 {displaySkillName(transformMode.skillId)}
                         </span>
-                        <CancelButton label="取消转化" onClick={cancelTransform} />
+                        <CancelButton
+                          label="取消转化"
+                          onClick={cancelTransform}
+                          hotkey="Esc"
+                        />
                       </div>
                     )}
 
@@ -642,6 +760,7 @@ export function GameViewComponentImpl({
                         play={play}
                         pending={pending}
                         isRespondPending={isRespondPending}
+                        respondCandidateCount={respondCandidateCount}
                         showCancelSelection={showCancelSelection}
                         showEndTurn={showEndTurn}
                         isMyTurn={isMyTurn}
@@ -704,6 +823,9 @@ export function GameViewComponentImpl({
           canPlayHandCard={canPlayHandCard}
           isRespondableCard={isRespondableCard}
           canDiscardClick={canDiscardClick}
+          disabledReason={handDisabledReason}
+          onCardDoubleClick={handleCardDoubleClick}
+          timeoutFallbackIds={discardFallbackIds}
           isMyAwaiting={isMyAwaiting}
           isMyTurn={isMyTurn}
           onReorderHand={onReorderHand}

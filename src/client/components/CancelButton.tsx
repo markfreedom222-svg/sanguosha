@@ -7,12 +7,19 @@ export interface CancelButtonProps {
   /** 按钮文案(默认"取消") */
   label?: string;
   onClick: () => void;
+  /** 快捷键角标(如 'Esc'),传入后按钮显示小胶囊 + hover title */
+  hotkey?: string;
 }
 
-export function CancelButton({ label = '取消', onClick }: CancelButtonProps) {
+export function CancelButton({ label = '取消', onClick, hotkey }: CancelButtonProps) {
   return (
-    <button className={styles.cancelBtn} onClick={onClick}>
+    <button
+      className={styles.cancelBtn}
+      onClick={onClick}
+      title={hotkey ? `快捷键 ${hotkey}` : undefined}
+    >
       {label}
+      {hotkey && <span className={styles.keyHint} aria-hidden>{hotkey}</span>}
     </button>
   );
 }

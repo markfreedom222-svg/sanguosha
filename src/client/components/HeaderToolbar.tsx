@@ -78,11 +78,12 @@ export function HeaderToolbar({ children, prefs, onToggle }: Props) {
           className={styles.toolbarBtn}
           title={
             '键盘快捷键：\n' +
-            'Enter — 出牌 / 打出回应牌\n' +
-            'Esc — 取消转化 / 取消选择\n' +
+            'Enter — 出牌 / 打出回应牌 / 确认弃牌 / 转化·分配提交\n' +
+            'Esc — 取消转化 / 撤销回应选牌 / 取消选择\n' +
             'Space — 不回应\n' +
             'E — 结束回合\n' +
-            '1-9 — 选中第 n 张手牌（自由出牌 / 回应 / 弃牌时）'
+            '1-9, 0 — 选中第 n 张手牌（0=第 10 张；自由出牌 / 回应 / 弃牌时）\n' +
+            '双击手牌 — 回应时直接打出；无目标牌直接出'
           }
           aria-label="键盘快捷键说明"
         >

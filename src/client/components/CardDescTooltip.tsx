@@ -61,6 +61,14 @@ const cardDescOrigin = css`
   font-style: italic;
 `;
 
+// 警示/原因行(hint):橙色小字,叠加在描述下方
+const cardDescHint = css`
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #f0a35e;
+`;
+
 // 长按防误触守卫:屏蔽 iOS 长按系统 callout 与文本选择(挂在卡牌元素上)
 export const cardTouchGuard = css`
   -webkit-touch-callout: none;
@@ -77,6 +85,8 @@ export interface CardDescContent {
   description?: string;
   /** 转化模式:原牌名 */
   originName?: string;
+  /** 附在描述底部的警示/原因行(置灰原因、超时弃置预告),红/橙色调 */
+  hint?: string | null;
   /** 花色文字色(♠♣灰 / ♥♦红) */
   suitColor: string;
 }
@@ -203,6 +213,7 @@ export function useCardDescOverlay(content: CardDescContent): {
             {content.rank}
           </span>
           {content.description && <span className={cardDescBody}>{content.description}</span>}
+          {content.hint && <span className={cardDescHint}>⚠ {content.hint}</span>}
           {content.originName && <span className={cardDescOrigin}>(原: {content.originName})</span>}
         </div>,
         document.body,
