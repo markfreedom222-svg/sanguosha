@@ -345,10 +345,28 @@ export async function dispatch(state: GameState, message: ClientMessage): Promis
   const hasPreceding = !!message.preceding?.length;
   const bufferSnapshot = hasPreceding ? state.atomHistory.length : 0;
   if (hasPreceding) state.viewBuffering = true;
+  // ── 有序数组快照:preceding(转化技的 当作/去标记 等)直接 mutate players[i].hand / marks,
+  //    而各技能 rollback 回调的恢复方式不一致(多张牌 push 回末尾、单张写回影子卡位置),
+  //    两者都会把原牌/原标记挪到数组末尾。手牌与标记顺序是客户端可见状态
+  //    (UI 排列 + pickTargetCard 盲选的 handIndex 按位置取值),被拒动作不得改动它 ——
+  //    否则在线客户端(增量视图看不到被回滚的 preceding 事件)与权威 buildView 顺序不一致,
+  //    玩家按位置选到的牌与点击的不是同一张。回滚后按快照整体还原(内容 + 顺序)。
+  const orderedSnapshot = hasPreceding
+    ? state.players.map((p) => ({ hand: [...p.hand], marks: [...p.marks] }))
+    : null;
   // 回滚 preceding(逆序调用 rollback)+ 截断缓冲的 atomHistory + 恢复 viewBuffering
+  // + 还原有序数组快照(hand/marks:技能回调各自恢复顺序不可靠)
   const rollbackPreceding = async (): Promise<void> => {
     for (let i = rollbacks.length - 1; i >= 0; i--) {
       await rollbacks[i].entry.rollback?.(state, rollbacks[i].params);
+    }
+    if (orderedSnapshot) {
+      for (let i = 0; i < orderedSnapshot.length; i++) {
+        const p = state.players[i];
+        if (!p) continue;
+        p.hand = [...orderedSnapshot[i].hand];
+        p.marks = [...orderedSnapshot[i].marks];
+      }
     }
     if (hasPreceding) {
       state.atomHistory.length = bufferSnapshot;
