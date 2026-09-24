@@ -150,7 +150,10 @@ function enumerateTransformActions(
   const isRespondCtx = pendingRequestedName !== null;
 
   for (const action of skillActions) {
-    if (action.actionType !== 'transform') continue;
+    // 转化能力由 `transform` 回调标记(与浏览器 PlayerCardLarge 同判据),而非 actionType:
+    // 同一技能可有多个转化 action(界父魂 = 'transform' 两张牌 + '武圣transform' granted 单张牌),
+    // 只认 'transform' 会让 granted 路径在无头/AI 客户端整类不可用。
+    if (!action.transform) continue;
     if (!isActiveAction(action, ctx)) continue;
     const filter = extractCardFilter(action.prompt);
     if (!filter) continue;
@@ -200,7 +203,7 @@ function enumerateTransformActions(
               preceding: [
                 {
                   skillId: action.skillId,
-                  actionType: 'transform',
+                  actionType: action.actionType,
                   params: { cardIds: [c1.id, c2.id] },
                 },
               ],
@@ -235,7 +238,7 @@ function enumerateTransformActions(
             preceding: [
               {
                 skillId: action.skillId,
-                actionType: 'transform',
+                actionType: action.actionType,
                 params: { cardId: card.id },
               },
             ],
@@ -279,7 +282,7 @@ function enumerateTransformActions(
           preceding: [
             {
               skillId: action.skillId,
-              actionType: 'transform',
+              actionType: action.actionType,
               params: { cardId: card.id },
             },
           ],

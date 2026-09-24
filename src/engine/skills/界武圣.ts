@@ -23,9 +23,13 @@ export function createSkill(id: string, ownerId: number): Skill {
   };
 }
 
-/** 影子卡 id:${原id}#武圣 */
+/** 影子卡 id:${原id}#界武圣。
+ *  后缀必须是**技能 id**(界武圣),与客户端约定一致(浏览器 usePlayInteraction 与
+ *  无头 availableActions 都按 `${选中牌 id 以 # 连接}#${skillId}` 构造主 action 的 cardId)。
+ *  写成技能名(武圣)会让客户端构造的影子 id 与引擎创建的不一致 → 主 action
+ *  validate 读不到影子卡 → 界武圣整类转化在客户端恒被拒。 */
 function shadowIdOf(cardId: string): string {
-  return `${cardId}#武圣`;
+  return `${cardId}#界武圣`;
 }
 
 export function onInit(skill: Skill, state: GameState): () => void {

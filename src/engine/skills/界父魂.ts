@@ -67,7 +67,7 @@ export function createSkill(id: string, ownerId: number): Skill {
 
 /** 父魂 影子卡 id:${id1}#${id2}#父魂 */
 function shadowIdOf(id1: string, id2: string): string {
-  return `${id1}#${id2}#父魂`;
+  return `${id1}#${id2}#界父魂`;
 }
 
 /** 玩家某张牌是否在自己的可控区域(手牌或装备区) */
@@ -76,10 +76,12 @@ function cardInOwnZone(self: GameState['players'][number], cardId: string): bool
   return Object.values(self.equipment).some((id) => id === cardId);
 }
 
-// ─── B'. granted 武圣 影子卡 id:${原id}#父魂武圣 ─────────────
+// ─── B'. granted 武圣 影子卡 id:${原id}#界父魂 ─────────────
+// 后缀统一为技能 id(界父魂):客户端按 `${cardId}#${skillId}` 构造主 action 的 cardId,
+// 与两条转化路径(两张牌 / granted 单张牌)都对齐;两种路径的 id 因牌数不同不会冲突。
 
 function grantedShadowIdOf(cardId: string): string {
-  return `${cardId}#父魂武圣`;
+  return `${cardId}#界父魂`;
 }
 
 // ─── granted 标记读写 helper ─────────────────────────

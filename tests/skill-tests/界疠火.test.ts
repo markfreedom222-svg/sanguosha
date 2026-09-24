@@ -96,14 +96,14 @@ describe('界疠火', () => {
     const P1 = harness.player('P1');
 
     await P0.transformThenUse('界疠火', { cardId: 's1' }, '杀', {
-      cardId: 's1#疠火',
+      cardId: 's1#界疠火',
       targets: [1],
     });
 
     // 影子卡应已建立且 damageType=火焰
-    expect(harness.state.cardMap['s1#疠火']).toBeDefined();
-    expect(harness.state.cardMap['s1#疠火'].damageType).toBe('火焰');
-    expect(harness.state.cardMap['s1#疠火'].shadowOf).toBe('s1');
+    expect(harness.state.cardMap['s1#界疠火']).toBeDefined();
+    expect(harness.state.cardMap['s1#界疠火'].damageType).toBe('火焰');
+    expect(harness.state.cardMap['s1#界疠火'].shadowOf).toBe('s1');
 
     // P1 不闪 → 扣血(火焰伤害)
     await P1.pass();
@@ -143,11 +143,11 @@ describe('界疠火', () => {
     const P1 = harness.player('P1');
 
     await P0.transformThenUse('界疠火', { cardId: 'ls1' }, '杀', {
-      cardId: 'ls1#疠火',
+      cardId: 'ls1#界疠火',
       targets: [1],
     });
 
-    expect(harness.state.cardMap['ls1#疠火'].damageType).toBe('火焰');
+    expect(harness.state.cardMap['ls1#界疠火'].damageType).toBe('火焰');
     await P1.pass();
     // 触发代价
     await P0.respond('界疠火', { cardId: 'c0' });
@@ -265,7 +265,7 @@ describe('界疠火', () => {
     const P1 = harness.player('P1');
 
     await P0.transformThenUse('界疠火', { cardId: 's1' }, '杀', {
-      cardId: 's1#疠火',
+      cardId: 's1#界疠火',
       targets: [1],
     });
     await P1.pass();
@@ -302,7 +302,7 @@ describe('界疠火', () => {
     const P1 = harness.player('P1');
 
     await P0.transformThenUse('界疠火', { cardId: 's1' }, '杀', {
-      cardId: 's1#疠火',
+      cardId: 's1#界疠火',
       targets: [1],
     });
     // P1 出闪抵消
@@ -339,7 +339,7 @@ describe('界疠火', () => {
     const P1 = harness.player('P1');
 
     await P0.transformThenUse('界疠火', { cardId: 's1' }, '杀', {
-      cardId: 's1#疠火',
+      cardId: 's1#界疠火',
       targets: [1],
     });
     await P1.pass();
@@ -378,7 +378,7 @@ describe('界疠火', () => {
     const P2 = harness.player('P2');
 
     await P0.transformThenUse('界疠火', { cardId: 's1' }, '杀', {
-      cardId: 's1#疠火',
+      cardId: 's1#界疠火',
       targets: [1, 2], // 两个目标
     });
 

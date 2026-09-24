@@ -121,7 +121,7 @@ describe('界武圣', () => {
       '界武圣',
       { cardId: 'c1' },
       '杀',
-      { cardId: 'c1#武圣', targets: [2] },
+      { cardId: 'c1#界武圣', targets: [2] },
     );
 
     // P3 不闪 → 扣血(说明杀生效,距离豁免)
@@ -145,7 +145,7 @@ describe('界武圣', () => {
     await P1.expectRejected({
       skillId: '杀',
       actionType: 'use',
-      params: { cardId: 'c1#武圣', targets: [2] },
+      params: { cardId: 'c1#界武圣', targets: [2] },
       preceding: [{ skillId: '界武圣', actionType: 'transform', params: { cardId: 'c1' } }],
     });
 
@@ -191,7 +191,7 @@ describe('界武圣', () => {
       '界武圣',
       { cardId: 'e1' },
       '杀',
-      { cardId: 'e1#武圣', targets: [2] },
+      { cardId: 'e1#界武圣', targets: [2] },
     );
 
     await P3.pass();

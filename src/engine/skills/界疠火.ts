@@ -57,9 +57,10 @@ export function createSkill(id: string, ownerId: number): Skill {
   };
 }
 
-/** 影子卡 id:${原id}#疠火 */
+/** 影子卡 id:${原id}#界疠火(后缀 = 技能 id,须与客户端构造约定一致;写技能名"疠火"
+ *  会让客户端构造的影子 id 与引擎创建的不一致 → 界疠火整类转化在客户端恒被拒)。 */
 function shadowIdOf(cardId: string): string {
-  return `${cardId}#疠火`;
+  return `${cardId}#界疠火`;
 }
 
 /** 标记某影子为疠火转化(在 localVars 里) */

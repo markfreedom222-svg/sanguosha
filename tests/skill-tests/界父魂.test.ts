@@ -119,15 +119,15 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'c2'] }, '杀', {
-      cardId: 'c1#c2#父魂',
+      cardId: 'c1#c2#界父魂',
       targets: [1],
     });
 
     // 两张原卡已合为影子(离开手牌)
     expect(harness.state.players[0].hand).not.toContain('c1');
     expect(harness.state.players[0].hand).not.toContain('c2');
-    expect(harness.state.cardMap['c1#c2#父魂']).toBeDefined();
-    expect(harness.state.cardMap['c1#c2#父魂'].name).toBe('杀');
+    expect(harness.state.cardMap['c1#c2#界父魂']).toBeDefined();
+    expect(harness.state.cardMap['c1#c2#界父魂'].name).toBe('杀');
 
     await P2.pass();
     expect(harness.state.players[1].health).toBe(3);
@@ -148,11 +148,11 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'e1'] }, '杀', {
-      cardId: 'c1#e1#父魂',
+      cardId: 'c1#e1#界父魂',
       targets: [1],
     });
 
-    expect(harness.state.cardMap['c1#e1#父魂']).toBeDefined();
+    expect(harness.state.cardMap['c1#e1#界父魂']).toBeDefined();
     // 装备槽已空(被卸下作为转化素材)
     expect(harness.state.players[0].equipment['武器']).toBeUndefined();
 
@@ -174,11 +174,11 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['e1', 'e2'] }, '杀', {
-      cardId: 'e1#e2#父魂',
+      cardId: 'e1#e2#界父魂',
       targets: [1],
     });
 
-    expect(harness.state.cardMap['e1#e2#父魂']).toBeDefined();
+    expect(harness.state.cardMap['e1#e2#界父魂']).toBeDefined();
     expect(harness.state.players[0].equipment['武器']).toBeUndefined();
     expect(harness.state.players[0].equipment['防具']).toBeUndefined();
 
@@ -203,7 +203,7 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'c2'] }, '杀', {
-      cardId: 'c1#c2#父魂',
+      cardId: 'c1#c2#界父魂',
       targets: [1],
     });
 
@@ -237,7 +237,7 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'c2'] }, '杀', {
-      cardId: 'c1#c2#父魂',
+      cardId: 'c1#c2#界父魂',
       targets: [1],
     });
 
@@ -268,7 +268,7 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'c2'] }, '杀', {
-      cardId: 'c1#c2#父魂',
+      cardId: 'c1#c2#界父魂',
       targets: [1],
     });
 
@@ -293,7 +293,7 @@ describe('界父魂', () => {
     const P2 = harness.player('P2');
 
     await P1.transformThenUse('界父魂', { cardIds: ['c1', 'c2'] }, '杀', {
-      cardId: 'c1#c2#父魂',
+      cardId: 'c1#c2#界父魂',
       targets: [1],
     });
 
@@ -357,7 +357,7 @@ describe('界父魂', () => {
     await P1.tryDispatch({
       skillId: '杀',
       actionType: 'use',
-      params: { cardId: 'r1#父魂武圣', targets: [1] },
+      params: { cardId: 'r1#界父魂', targets: [1] },
       preceding: [
         { skillId: '界父魂', actionType: '武圣transform', params: { cardId: 'r1' } },
       ],
@@ -432,11 +432,11 @@ describe('界父魂', () => {
     await P1.expectRejected({
       skillId: '杀',
       actionType: 'use',
-      params: { cardId: 'c1#c2#父魂' },
+      params: { cardId: 'c1#c2#界父魂' },
       preceding: [{ skillId: '界父魂', actionType: 'transform', params: { cardIds: ['c1', 'c2'] } }],
     });
 
-    expect(harness.state.cardMap['c1#c2#父魂']).toBeUndefined();
+    expect(harness.state.cardMap['c1#c2#界父魂']).toBeUndefined();
     expect(harness.state.players[0].hand).toEqual(expect.arrayContaining(['c1', 'c2']));
     expect(harness.state.players[0].hand).toHaveLength(2);
   });
@@ -530,7 +530,7 @@ describe('界父魂', () => {
       await P1.tryDispatch({
         skillId: '杀',
         actionType: 'respond',
-        params: { cardId: 'c1#c2#父魂' },
+        params: { cardId: 'c1#c2#界父魂' },
         preceding: [
           { skillId: '界父魂', actionType: 'transform', params: { cardIds: ['c1', 'c2'] } },
         ],
@@ -541,8 +541,8 @@ describe('界父魂', () => {
       expect(harness.state.pendingSlots.has(0)).toBe(false);
       expect(harness.state.players[0].hand).toEqual([]);
       // 影子杀进处理区(供调用方南蛮/决斗检测)
-      expect(harness.state.cardMap['c1#c2#父魂']).toBeDefined();
-      expect(harness.state.cardMap['c1#c2#父魂'].name).toBe('杀');
+      expect(harness.state.cardMap['c1#c2#界父魂']).toBeDefined();
+      expect(harness.state.cardMap['c1#c2#界父魂'].name).toBe('杀');
     } finally {
       restoreAutoCompare();
     }
@@ -566,7 +566,7 @@ describe('界父魂', () => {
     await P1.expectRejected({
       skillId: '杀',
       actionType: 'use',
-      params: { cardId: 'c1#w1#父魂' },
+      params: { cardId: 'c1#w1#界父魂' },
       preceding: [
         { skillId: '界父魂', actionType: 'transform', params: { cardIds: ['c1', 'w1'] } },
       ],
