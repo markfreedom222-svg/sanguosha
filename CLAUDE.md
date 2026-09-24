@@ -241,6 +241,25 @@ vars['unlimitedKills']  // 应改为 '诸葛连弩/active'
   `TURN_SCOPED_VIEW_KEYS`），经「回合用量」atom 投影；该 atom 的 apply 还会镜像到
   `turn.vars['__view/<key>']`，供 `buildView`（初始/重连视图）重建。漏投影 = 引擎放行但
   客户端发不出动作（按钮消失 / 目标选不中），整类效果在客户端不可用。
+- **判定流程的牌移动必须经 atom**：判定牌从牌堆顶翻入结算帧后，离开处理区只有两条合法路径，
+  都必须走 atom 才有 view 投影（否则增量视图与 `buildView` 永久漂移：弃牌堆计数虚高、
+  收走方手牌数多 1）：
+  - 入弃牌堆 / 被天妒·双雄·界落英 拿走 / 被鬼才·鬼道 改判替换 → `移动牌`（收尾见
+    `flows/judge.ts` 的 `cleanupJudgeCard`，改判见 `replaceJudgeCard`）；
+  - 被屯田·界屯田 收作"田"（移出游戏，只存 `marks[].payload.cardId`）→ `收取判定牌`。
+  `判定.applyView` 只做 `deckCount-1` + 判定牌进 `processing`，**不得**预支
+  `discardPileCount+1`（判定牌被收走时它根本没进弃牌堆）。
+- **影子卡 id 后缀 = 技能 id**：客户端（浏览器 `usePlayInteraction`、无头 `availableActions`）
+  构造主 action 的 cardId 为 `${选中牌 id 以 # 连接}#${skillId}`。引擎转化技创建影子卡时必须
+  用**同一个 skillId** 作后缀——写成技能名（界武圣 `#武圣`、界疠火 `#疠火`、界父魂 `#父魂`）
+  会让主 action 读不到 `cardMap[影子 id]` → validate 恒失败，该转化技在客户端整类不可用。
+  另：同一技能可有多个转化 action（界父魂 = `transform` 两张牌 + `武圣transform` granted 单张），
+  客户端枚举按 `action.transform` 存在判定（非 `actionType === 'transform'`），preceding 回填
+  action 自身的 actionType。
+- **被拒动作不得改变玩家可见的有序数组**：`dispatch` 在跑 preceding 之前快照各玩家的
+  `hand`/`marks`，任一 reject 路径回滚后按快照还原（内容 + 顺序）。手牌/标记顺序是客户端
+  可见状态（UI 排列 + `pickTargetCard` 盲选的 `handIndex` 按位置取值），技能各自的 rollback
+  回调把原牌 push 回末尾会让在线客户端与权威 `buildView` 顺序错位、玩家选到的牌不是点击的那张。
 
 ## 测试
 

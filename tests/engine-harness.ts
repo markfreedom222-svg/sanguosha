@@ -795,9 +795,13 @@ export class SkillTestHarness {
 /** 控制自动对比开关(测试可用 disableAutoCompare() 临时关闭) */
 let autoCompareEnabled = true;
 
-/** 关闭自动对比(返回恢复函数)。仅用于绕过已知不可比场景。 */
+/** 关闭自动对比(返回恢复函数)。仅用于绕过已知不可比场景(测试装置直接 mutate state、
+ *  隔离驱动阶段 atom、pending 选择顺序等)。
+ *
+ *  排查视图漂移时可用诊断开关 `STRICT_VIEW_COMPARE=1 vitest run --project skills <用例…>`
+ *  忽略全部关闭请求,把各用例绕过的一致性断言重新打开 —— 一次性扫出所有 apply/applyView
+ *  不对称(实测一次扫出 43 处,分属 4 类根因)。 */
 export function disableAutoCompare(): () => void {
-  // 临时诊断开关:STRICT_VIEW_COMPARE=1 时忽略关闭请求,用现有用例扫出全部视图漂移。
   if (process.env.STRICT_VIEW_COMPARE === '1') return () => {};
   const prev = autoCompareEnabled;
   autoCompareEnabled = false;
