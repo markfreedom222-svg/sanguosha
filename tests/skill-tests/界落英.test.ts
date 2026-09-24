@@ -16,7 +16,7 @@
 //  10. 端到端:回合外累计获得 ≥ 体力上限张 ♣牌 且 背面朝上 → 触发翻回询问
 //  11. 端到端:正面朝上时即使外得≥上限 → 不触发翻回询问
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import { applyAtom } from '../../src/engine/core/apply';
 import { runJudgeFlow } from '../../src/engine/flows/judge';
 import '../../src/engine/atoms';
@@ -247,7 +247,6 @@ describe('界落英', () => {
   //   已知局限(同 天妒/闪电/乐不思蜀 等不拿牌时无此问题)。状态本身正确,本用例关闭自动对比。
 
   it('端到端:其他玩家判定 ♣牌 → confirm → 曹植获得', async () => {
-    const restoreCompare = disableAutoCompare();
     const judge = makeCard('j1', '杀', '♣', '5');
     const state: GameState = createGameState({
       players: [
@@ -262,8 +261,6 @@ describe('界落英', () => {
     state.zones = { deck: ['j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('P0');
-
-    try {
       void runJudgeFlow(harness.state, 1, '测试');
       await harness.waitForStable();
 
@@ -273,9 +270,6 @@ describe('界落英', () => {
 
       expect(harness.state.players[0].hand).toContain('j1');
       expect(harness.state.zones.discardPile).not.toContain('j1');
-    } finally {
-      restoreCompare();
-    }
   });
 
   it('端到端:其他玩家判定 ♥牌 → 不触发', async () => {
@@ -332,7 +326,6 @@ describe('界落英', () => {
   // ─── 边界:外得累计 → 触发翻回正面 ─────────────────────────
 
   it('端到端:回合外累计获得 ≥ 体力上限张 ♣牌 且背面朝上 → 触发酒诗翻回询问', async () => {
-    const restoreCompare = disableAutoCompare();
     // 曹植 体力上限=3,背面朝上,外得计数 0
     // 弃 3 张 ♣ 牌 → 累计 3 = 体力上限 → 触发翻回询问
     const clubs = [
@@ -364,8 +357,6 @@ describe('界落英', () => {
     });
     await harness.setup(state);
     const P0 = harness.player('P0');
-
-    try {
       // P1 一次弃 3 张 ♣
       void applyAtom(harness.state, {
         type: '弃置',
@@ -391,9 +382,6 @@ describe('界落英', () => {
       expect(harness.state.players[0].hand).toEqual(expect.arrayContaining(['c1', 'c2', 'c3']));
       // 翻回正面:无 '/翻面' 后缀标签
       expect(harness.state.players[0].tags.some((t) => t.endsWith('/翻面'))).toBe(false);
-    } finally {
-      restoreCompare();
-    }
   });
 
   it('端到端:正面朝上时不触发翻回询问(即使外得≥上限)', async () => {

@@ -15,8 +15,7 @@ import {
   SkillTestHarness,
   waitForStable,
   fireTimeoutAndWait,
-  disableAutoCompare,
-} from '../engine-harness';
+  } from '../engine-harness';
 import { applyAtom } from '../../src/engine/core/apply';
 import { buildView } from '../../src/engine/index';
 import '../../src/engine/atoms';
@@ -96,9 +95,6 @@ describe('鬼才', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    // 判定 atom 视图模型局限:替换判定牌后 processedView 与 buildView 不对称(同天妒),关闭自动对比
-    const restoreCompare = disableAutoCompare();
-    try {
     state.zones = { deck: ['j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('司马懿');
@@ -122,7 +118,6 @@ describe('鬼才', () => {
     expect(harness.state.players[0].hand).not.toContain('r1');
     // 闪电未命中 → 传给下家(司马懿)
     expect(harness.state.players[0].pendingTricks.some((t) => t.name === '闪电')).toBe(true);
-    } finally { restoreCompare(); }
   });
 
   // ─── 2. 不替换 → 闪电命中,P1 受伤 ──────────────────────────
@@ -238,9 +233,6 @@ describe('鬼才', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    // 判定 atom 视图模型局限:替换判定牌后 processedView 与 buildView 不对称(同天妒),关闭自动对比
-    const restoreCompare = disableAutoCompare();
-    try {
     state.zones = { deck: ['j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('司马懿');
@@ -256,7 +248,6 @@ describe('鬼才', () => {
 
     // ♠3 命中 → P1 受 3 点伤害
     expect(harness.state.players[1].health).toBe(1);
-    } finally { restoreCompare(); }
   });
 
   // ─── 5. 消费方座次靠前、改判方座次靠后 → 改判仍生效 ──────
@@ -291,8 +282,6 @@ describe('鬼才', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P1 = harness.player('司马懿');
@@ -312,9 +301,6 @@ describe('鬼才', () => {
       expect(harness.state.players[1].pendingTricks.some((t) => t.name === '闪电')).toBe(true);
       // 替换牌消耗
       expect(harness.state.players[1].hand).not.toContain('r1');
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 投影回归(2026-08-25 cardFilter 修复):pending 必须携带可选牌 candidates ──
@@ -393,8 +379,6 @@ describe('鬼才', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('司马懿');
@@ -412,8 +396,5 @@ describe('鬼才', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       expect(harness.state.zones.discardPile).toContain('r1');
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 });

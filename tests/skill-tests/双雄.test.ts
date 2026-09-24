@@ -9,7 +9,7 @@
 //      6. 负面:未发动双雄(无颜色) → 拒绝
 //      7. availableActions:transform 声明
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
@@ -62,9 +62,6 @@ describe('双雄', () => {
 
   it('摸牌阶段发动双雄 → 进行一次判定 → 获得判定牌 → 记颜色 → 跳过默认摸牌', async () => {
     // 「判定」atom 从牌堆顶(deck 末尾)翻一张。
-    // deck=[j1(♥)] → 判定牌为 j1(♥,红色)→ 进入玩家手牌,记 color=red
-    // 跳过默认摸牌后:手牌=[j1](获得判定牌),未摸 2 张
-    const restoreAutoCompare = disableAutoCompare();
     const j1 = makeCard('j1', '杀', '♥', '5');
     await harness.setup(
       createGameState({
@@ -107,13 +104,11 @@ describe('双雄', () => {
     Y.expectView((v) => {
       expect(v.players[0].turnUsage?.['双雄/color']).toBe('红');
     });
-    restoreAutoCompare();
   });
 
   // ─── A1b. 发动双雄:判定为黑色 → 记 black ─────────────────────
 
   it('摸牌阶段发动双雄 → 判定黑色(♠)→ 颜色记为 black', async () => {
-    const restoreAutoCompare = disableAutoCompare();
     const j1 = makeCard('j1', '杀', '♠', '7');
     await harness.setup(
       createGameState({
@@ -140,7 +135,6 @@ describe('双雄', () => {
     // 判定 ♠(黑色)→ 颜色记为 黑
     expect(harness.state.turn.vars['双雄/color']).toBe('黑');
     expect(harness.state.players[0].hand).toContain('j1');
-    restoreAutoCompare();
   });
 
   // ─── A2. 不发动双雄 → 走默认摸牌(无颜色标记) ──────────────────

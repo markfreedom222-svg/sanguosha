@@ -13,8 +13,7 @@ import {
   SkillTestHarness,
   waitForStable,
   fireTimeoutAndWait,
-  disableAutoCompare,
-} from '../engine-harness';
+  } from '../engine-harness';
 import { applyAtom } from '../../src/engine/core/apply';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
@@ -90,8 +89,6 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
@@ -113,9 +110,6 @@ describe('界鬼道', () => {
       expect(harness.state.players[0].hand.length).toBe(0);
       // 闪电传给下家(界张角)
       expect(harness.state.players[0].pendingTricks.some((t) => t.name === '闪电')).toBe(true);
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 2. 用♠3(黑桃2-9)替换 → 替换成功 + 摸一张牌 ──────────────
@@ -146,8 +140,6 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       // 牌堆末尾 = 牌堆顶:j1 先被判定消耗,dd1 其下(界鬼道摸牌将抽到)
       state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
       await harness.setup(state);
@@ -168,9 +160,6 @@ describe('界鬼道', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       // 判定牌变为 ♠3(黑桃2-9)→ 闪电仍命中 → P1 受 3 点伤害
       expect(harness.state.players[1].health).toBe(1); // 4 - 3
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 3. 用♠A(黑桃非2-9)替换 → 替换成功,不摸牌 ───────────────
@@ -201,8 +190,6 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1', 'dd1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
@@ -223,9 +210,6 @@ describe('界鬼道', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       // ♠A 非黑桃2-9 → 闪电不命中 → P1 不受伤
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 4. 不替换 → 无摸牌 ──────────────────────────────────
@@ -304,8 +288,6 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
@@ -331,9 +313,6 @@ describe('界鬼道', () => {
       expect(harness.state.players[0].hand).toContain('red1');
       // ♣5 替换 → 闪电不命中
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 6. 无黑色手牌 → 不询问 ────────────────────────────────
@@ -409,8 +388,6 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1r'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
@@ -427,8 +404,5 @@ describe('界鬼道', () => {
       expect(harness.state.players[0].hand).not.toContain('r1r');
       expect(harness.state.zones.discardPile).toContain('r1r');
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 });

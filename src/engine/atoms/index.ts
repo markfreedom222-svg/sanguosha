@@ -18,6 +18,7 @@ import { 使用结算结束时 } from './使用结算结束时';
 import { 出牌窗口 } from './出牌窗口';
 import { 分配武将 } from './分配武将';
 import { 判定 } from './判定';
+import { 收取判定牌 } from './收取判定牌';
 import { 加标签 } from './加标签';
 import { 加标记 } from './加标记';
 import { 卸下 } from './卸下';
@@ -124,6 +125,7 @@ export const atomMap: Record<AtomName, AtomDefinition<any>> = {
   出牌窗口,
   分配武将,
   判定,
+  收取判定牌,
   加标签,
   加标记,
   卸下,

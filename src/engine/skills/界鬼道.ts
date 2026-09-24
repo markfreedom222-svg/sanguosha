@@ -13,6 +13,7 @@ import type { Card, FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply'
 import { frameCards } from '../core/frame';
 import { registerAction, registerJudgeModifier } from '../core/skill';
+import { replaceJudgeCard } from '../flows/judge';
 
 const _SKILL_ID = '界鬼道';
 const DISPLAY_NAME = '鬼道';
@@ -130,15 +131,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
 
     const replaceCard = ctx.state.cardMap[replaceCardId];
 
-    // 交换判定牌(直接 mutate frameCards,同鬼才/天妒/标鬼道模式)
-    const cur = frameCards(ctx.state);
-    const lastIdx = cur.length - 1;
-    if (lastIdx < 0) return;
-    const originalJudgeId = cur[lastIdx];
-    cur.splice(lastIdx, 1);
-    ctx.state.zones.discardPile.push(originalJudgeId);
-    me.hand = me.hand.filter((id) => id !== replaceCardId);
-    cur.push(replaceCardId);
+    // 交换判定牌:原判定牌 → 弃牌堆,替换牌 → 处理区(帧顶)。
+    // 两步都走「移动牌」atom —— 直接 mutate frameCards 会漏掉「替换牌离手(handCount)」
+    // 与「原判定牌入弃牌堆(discardPileCount)」的视图投影,客户端会一直显示司马懿手里还有那张牌。
+    await replaceJudgeCard(ctx.state, ownerId, replaceCardId);
 
     // ── 界限突破新增:替换牌为黑桃2~9 → 摸一张牌 ──────────────
     if (isSpade2to9(replaceCard)) {

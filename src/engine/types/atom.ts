@@ -252,6 +252,9 @@ export type Atom =
   | { type: '初始化洗牌'; seed: number }
   | { type: '发牌'; handSize: number }
   | { type: '判定'; player: number; judgeType: string }
+  // 收取判定牌:技能把判定牌移出处理区(记入自身 vars/marks,如屯田的"田")。
+  //   与 判定(翻入处理区)对称,两端都有 view 投影(processing 增减)。
+  | { type: '收取判定牌'; player: number; cardId: string }
   // 判定编排时机标记(对齐 出牌流程重设计.md 模块 H / judge.md):事件标记型,
   // validate 恒通过,apply 无副作用,只提供 before/after hook 注册点。由 judge-flow.ts 的
   // runJudgeFlow 在判定流程中依次发出。与 判定(底层翻牌 atom)区分——后者保留为底层操作,

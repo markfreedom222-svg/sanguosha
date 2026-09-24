@@ -93,9 +93,13 @@ describe('模块 H:判定编排函数 runJudgeFlow', () => {
     expect(types.indexOf('判定时')).toBeLessThan(types.indexOf('判定'));
   });
 
-  it('完整时序:判定时 → 判定 → 判定牌生效前 → 判定牌生效后', async () => {
+  it('完整时序:判定时 → 判定 → 判定牌生效前 → 判定牌生效后(→ 收尾 移动牌)', async () => {
     await runJudgeFlow(state, 0, '闪电');
-    expect(atomTypes(state)).toEqual(['判定时', '判定', '判定牌生效前', '判定牌生效后']);
+    // 四个时机标记的顺序是契约;收尾把判定牌移入弃牌堆走「移动牌」atom(视图投影),
+    // 故末尾多一个 移动牌 —— 断言只取时机标记,不锁实现细节的完整 atom 列表。
+    const types = atomTypes(state);
+    expect(types.slice(0, 4)).toEqual(['判定时', '判定', '判定牌生效前', '判定牌生效后']);
+    expect(types.slice(4)).toEqual(['移动牌']);
   });
 
   // ── 判定牌翻出 / 入弃牌堆 / 返回值 ─────────────────────────

@@ -112,15 +112,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
     // 红桃:不拿(让 判定.afterHooks 把判定牌正常移入弃牌堆)
     if (judgeCard.suit === '♥') return;
 
-    // 非红桃:把判定牌从 frame.cards 拿出(防止 判定.afterHooks 移入弃牌堆)
-    const frame = ctx.state.settlementStack[ctx.state.settlementStack.length - 1];
-    if (frame) {
-      frame.cards = frame.cards.filter((id) => id !== judgeCardId);
-    } else {
-      ctx.state.zones.processing = ctx.state.zones.processing.filter(
-        (id) => id !== judgeCardId,
-      );
-    }
+    // 非红桃:把判定牌收作"田"(防止 runJudgeFlow 收尾把它移入弃牌堆)。
+    // 走「收取判定牌」atom —— 直接 mutate frame.cards 漏掉视图投影,前端处理区会一直
+    // 显示这张已被收走的判定牌。
+    await applyAtom(ctx.state, { type: '收取判定牌', player: ownerId, cardId: judgeCardId });
 
     // 预计算加田后的田数量(atom apply 前尚无新田,故 +1)
     const newCount = tianCount(ctx.state, ownerId) + 1;

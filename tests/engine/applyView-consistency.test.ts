@@ -148,7 +148,7 @@ describe('applyView 一致性 bug', () => {
     });
   });
 
-  describe('判定 atom: deckCount 未递减', () => {
+  describe('判定 atom: 判定牌去向由后续 atom 投影', () => {
     it('apply 从 deck shift 到 processing, applyView 不减 deckCount', () => {
       const def = getAtomDef('判定');
       const view = mockView();
@@ -160,7 +160,7 @@ describe('applyView 一致性 bug', () => {
       expect(view.zones!.deckCount).toBe(before - 1); // ❌ BUG: 实际仍为 10
     });
 
-    it('applyView 净效果: deckCount-1 + discardPileCount+1, processing 不变', () => {
+    it('applyView 与 apply 对称: deckCount-1 + 判定牌进处理区,不预支 discardPileCount', () => {
       const def = getAtomDef('判定');
       const view = mockView();
 
@@ -172,10 +172,38 @@ describe('applyView 一致性 bug', () => {
         card: { name: '杀', suit: '♠', color: '黑', rank: '7' },
       });
 
-      // 净效果:判定牌最终进弃牌堆,processing 不变(apply 加 + afterHooks 减)
-      expect(view.zones!.processing).toHaveLength(0);
-      expect(view.zones!.discardPileCount).toBe(1);
+      // 判定牌此刻在处理区(尚未决定去向):牌堆 -1、处理区 +1、弃牌堆不动。
+      // 预支 discardPileCount+1 会在判定牌被 天妒/屯田/双雄/落英 收走时虚高 1。
       expect(view.zones!.deckCount).toBe(9);
+      expect(view.zones!.processing).toEqual(['j1']);
+      expect(view.zones!.discardPileCount).toBe(0);
+    });
+
+    it('牌堆为空(apply 早退未翻牌): 只减 deckCount,不产生处理区牌', () => {
+      const def = getAtomDef('判定');
+      const view = mockView({ zones: { deckCount: 0, discardPileCount: 0, processing: [] } });
+
+      def.applyView!(view, { type: '判定', player: 0, judgeType: '乐不思蜀' });
+
+      expect(view.zones!.deckCount).toBe(0);
+      expect(view.zones!.processing).toEqual([]);
+    });
+  });
+
+  describe('收取判定牌 atom: 与 apply 对称地移出处理区', () => {
+    it('apply 把判定牌移出帧牌区, applyView 同步移除 processing/帧', () => {
+      const def = getAtomDef('收取判定牌');
+      const view = mockView({
+        zones: { deckCount: 100, discardPileCount: 0, processing: ['j1'] },
+        settlementStack: [{ skillId: '屯田', from: 0, params: {}, cards: ['j1'], cancelled: false }],
+      });
+
+      def.applyView!(view, { type: '收取判定牌', player: 0, cardId: 'j1' });
+
+      // 收走后:处理区(processing + 帧牌区)都不再有这张牌,弃牌堆不变(牌被移出游戏)
+      expect(view.zones!.processing).toEqual([]);
+      expect(view.settlementStack[0].cards).toEqual([]);
+      expect(view.zones!.discardPileCount).toBe(0);
     });
   });
 

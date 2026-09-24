@@ -19,6 +19,7 @@ import type { FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply'
 import { frameCards } from '../core/frame';
 import { registerAction, registerJudgeModifier } from '../core/skill';
+import { replaceJudgeCard } from '../flows/judge';
 
 export function createSkill(id: string, ownerId: number): Skill {
   return {
@@ -101,21 +102,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
     // 二次校验:替换牌仍须在手牌中
     if (!me.hand.includes(replaceCardId)) return;
 
-    // 交换判定牌(直接 mutate frameCards,与天妒同模式):
-    //   判定 atom 的 toViewEvents 静态预算 discardPile+1(假设判定牌进弃牌堆),
-    //   但其 afterHooks 用 splice 直接移动不产生 ViewEvent。若用 applyAtom(移动牌)
-    //   会额外产生 ViewEvent 导致 processedView 与 buildView 不对称。
-    //   故直接 mutate(不产生额外 ViewEvent),与天妒一致。
-    //   已知限制:替换后 processedView 的 processing/discardPile 与 buildView 可能有偏差
-    //   (判定 atom 视图模型局限),测试中关闭视图对比。
-    const cur = frameCards(ctx.state);
-    const lastIdx = cur.length - 1;
-    if (lastIdx < 0) return;
-    const originalJudgeId = cur[lastIdx];
-    cur.splice(lastIdx, 1);
-    ctx.state.zones.discardPile.push(originalJudgeId);
-    me.hand = me.hand.filter((id) => id !== replaceCardId);
-    cur.push(replaceCardId);
+    // 交换判定牌:原判定牌 → 弃牌堆,替换牌 → 处理区(帧顶)。
+    // 两步都走「移动牌」atom —— 直接 mutate frameCards 会漏掉「替换牌离手(handCount)」
+    // 与「原判定牌入弃牌堆(discardPileCount)」的视图投影,客户端会一直显示司马懿手里还有那张牌。
+    await replaceJudgeCard(ctx.state, ownerId, replaceCardId);
   });
 
   return () => {};

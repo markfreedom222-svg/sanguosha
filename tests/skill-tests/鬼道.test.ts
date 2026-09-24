@@ -14,8 +14,7 @@ import {
   SkillTestHarness,
   waitForStable,
   fireTimeoutAndWait,
-  disableAutoCompare,
-} from '../engine-harness';
+  } from '../engine-harness';
 import { applyAtom } from '../../src/engine/core/apply';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
@@ -91,8 +90,6 @@ describe('鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('张角');
@@ -112,9 +109,6 @@ describe('鬼道', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       // 闪电传给下家(张角)
       expect(harness.state.players[0].pendingTricks.some((t) => t.name === '闪电')).toBe(true);
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 2. 不替换 → 闪电命中 ──────────────────────────────────
@@ -191,8 +185,6 @@ describe('鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('张角');
@@ -217,9 +209,6 @@ describe('鬼道', () => {
       expect(harness.state.players[1].health).toBe(4);
       expect(harness.state.players[0].hand).toContain('red1'); // 红色牌未消耗
       expect(harness.state.players[0].hand).not.toContain('blk1'); // 黑色牌已用
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 4. 无黑色手牌 → 不询问 ────────────────────────────────
@@ -293,8 +282,6 @@ describe('鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P1 = harness.player('张角');
@@ -314,9 +301,6 @@ describe('鬼道', () => {
       expect(harness.state.players[1].pendingTricks.some((t) => t.name === '闪电')).toBe(true);
       // 替换牌消耗
       expect(harness.state.players[1].hand).not.toContain('r1');
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 回归(2026-08-26 bug 修复会话):客户端真实参数形状 {cardId} 无 choice 也必须替换 ───
@@ -348,8 +332,6 @@ describe('鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1b'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('张角');
@@ -366,8 +348,5 @@ describe('鬼道', () => {
       expect(harness.state.players[0].hand).not.toContain('r1b');
       expect(harness.state.zones.discardPile).toContain('r1b');
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 });

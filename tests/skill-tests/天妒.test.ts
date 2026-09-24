@@ -1,7 +1,7 @@
 // 天妒(郭嘉·被动技)测试
 //   自己的判定牌生效后,可获得该判定牌
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, waitForStable, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness, waitForStable } from '../engine-harness';
 import { runJudgeFlow } from '../../src/engine/flows/judge';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
@@ -58,7 +58,6 @@ describe('天妒', () => {
   // 但增量视图仍 +1 → discardPileCount 与全量视图不一致。这是 判定 atom 视图模型的
   // 已知局限(同 闪电/乐不思蜀 等不拿牌时无此问题)。状态本身正确,本用例关闭自动对比。
   it('自己的判定 → 确认天妒 → 判定牌进手牌', async () => {
-    const restoreCompare = disableAutoCompare();
     const judge = makeCard('j1', '杀', '♠', '5');
     const state: GameState = createGameState({
       players: [
@@ -73,8 +72,6 @@ describe('天妒', () => {
     state.zones = { deck: ['j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('P0');
-
-    try {
       void runJudgeFlow(harness.state, 0, '测试');
       await waitForStable(harness.state); // 天妒/choose 询问
       P0.expectPending('请求回应');
@@ -85,9 +82,6 @@ describe('天妒', () => {
       expect(harness.state.players[0].hand).toContain('j1');
       // 判定牌不在弃牌堆(被天妒拿走)
       expect(harness.state.zones.discardPile).not.toContain('j1');
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 不发动天妒:判定牌正常进弃牌堆 ─────────────────────────────
@@ -166,7 +160,6 @@ describe('天妒', () => {
   // 契约:返回值/localVars['判定/finalJudgeCardId'] 必须仍是该判定牌,
   // 否则 乐不思蜀/兵粮寸断/闪电 的 resolve 读到 undefined/旧值,判定结果错乱。
   it('天妒获得判定牌后,runJudgeFlow 仍返回最终判定牌 id', async () => {
-    const restoreCompare = disableAutoCompare();
     const judge = makeCard('j1', '杀', '♠', '5');
     const state: GameState = createGameState({
       players: [
@@ -181,8 +174,6 @@ describe('天妒', () => {
     state.zones = { deck: ['j1'], discardPile: [], processing: [] };
     await harness.setup(state);
     const P0 = harness.player('P0');
-
-    try {
       let result: string | undefined;
       const flow = runJudgeFlow(harness.state, 0, '乐不思蜀').then((r) => {
         result = r;
@@ -196,8 +187,5 @@ describe('天妒', () => {
       // 判定牌被收走后,流程返回值必须仍是它(修复前:undefined → 下游读 stale 旧值)
       expect(result).toBe('j1');
       expect(harness.state.players[0].hand).toContain('j1');
-    } finally {
-      restoreCompare();
-    }
   });
 });

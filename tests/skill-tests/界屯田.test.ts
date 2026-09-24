@@ -6,7 +6,7 @@
 //   2. 回合内弃置非杀 → 不触发
 //   3. 回合外失去牌 → 触发(标版行为保持)
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
@@ -59,7 +59,6 @@ describe('界屯田', () => {
 
   // ─── 回合内弃置杀 → 屯田触发 → 加田 ────────────────────
   it('回合内弃置杀 → 判定非红桃 → 加田标记 + 距离修正', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const sha = makeCard('sha', '杀', '♠', '5');
     const judge = makeCard('j1', '杀', '♠', '7'); // 非红桃
@@ -94,12 +93,10 @@ describe('界屯田', () => {
     expect(tianMarks.length).toBe(1);
     expect(harness.state.players[0].vars['距离/进攻修正']).toBe(1);
 
-    restoreAutoCompare();
   });
 
   // ─── 回合内弃置非杀 → 不触发 ────────────────────
   it('回合内弃置非杀(闪):屯田不触发', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const shan = makeCard('shan', '闪', '♣', '5');
     const judge = makeCard('j1', '杀', '♠', '7');
@@ -127,12 +124,10 @@ describe('界屯田', () => {
     );
     expect(tianMarks.length).toBe(0);
 
-    restoreAutoCompare();
   });
 
   // ─── 回合外失去牌 → 触发(标版行为保持)────────────
   it('回合外被获得牌 → 判定非红桃 → 加田标记', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     const judge = makeCard('j1', '杀', '♠', '7');
@@ -161,6 +156,5 @@ describe('界屯田', () => {
     );
     expect(tianMarks.length).toBe(1);
 
-    restoreAutoCompare();
   });
 });

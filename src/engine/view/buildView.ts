@@ -231,7 +231,13 @@ export function buildView(state: GameState, viewer: number, debug = false): Game
       deckCount: state.zones.deck.length,
       discardPileCount: state.zones.discardPile.length,
       // 结算区:所有结算帧的牌聚合(供 ZoneInfoBar 展示)。真相源是 settlementStack 的各帧 cards。
-      processing: state.settlementStack.flatMap((f) => f.cards),
+      // 无帧上下文的判定/拼点/respond 打出会落到 state.zones.processing(帧栈为空时的暂存区,
+      // 见 移动牌/判定/拼点扣置 的 frame ? frame.cards : zones.processing 分支),同样属于处理区,
+      // 必须一并投影——否则前端 view.zones.processing 有这张牌、buildView 没有(视图漂移)。
+      processing: [
+        ...state.zones.processing,
+        ...state.settlementStack.flatMap((f) => f.cards),
+      ],
     },
     settlementStack: state.settlementStack.map((f) => ({
       skillId: f.skillId,

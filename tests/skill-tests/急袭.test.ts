@@ -11,7 +11,7 @@
 //   4. 负面:指定的 markId 不存在 → 拒绝
 //   5. 负面:非自己回合 → transform 被拒绝(发动时机)
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
@@ -62,7 +62,6 @@ describe('急袭', () => {
   // ─── 正面:将田当顺手牵羊使用 → 获得目标牌 ─────────────────────
 
   it('正面:将田当顺手牵羊使用 → 获得目标手牌 + 田被消耗', async () => {
-    const restoreAutoCompare = disableAutoCompare();
     // 判定牌(田的来源)
     const judgeCard = makeCard('jc1', '杀', '♣', '5');
     // P1 的手牌(被顺手牵羊的目标)
@@ -107,13 +106,11 @@ describe('急袭', () => {
     expect(harness.state.players[1].hand).not.toContain('p1c');
     // 影子卡还原(判定牌进弃牌堆)
     expect(harness.state.zones.discardPile).toContain('jc1');
-    restoreAutoCompare();
   });
 
   // ─── 正面:田减少后距离修正更新 ───────────────────────────────
 
   it('正面:消耗田后距离修正 vars 更新', async () => {
-    const restoreAutoCompare = disableAutoCompare();
     const judgeCard1 = makeCard('jc1', '杀', '♣', '5');
     const judgeCard2 = makeCard('jc2', '杀', '♠', '3');
     const p1Card = makeCard('p1c', '闪', '♥', '3');
@@ -160,7 +157,6 @@ describe('急袭', () => {
     // 完成顺手牵羊流程
     await P0.pass(); // 无懈
     await P0.pass(); // 选牌
-    restoreAutoCompare();
   });
 
   // ─── 负面:无田时 transform 被拒绝 ────────────────────────────

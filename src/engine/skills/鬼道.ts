@@ -6,8 +6,10 @@
 //
 // 与鬼才的差异:**仅限黑色牌**(♠或♣,即 color==='黑')替换;鬼才为任意手牌。
 //
-// 替换机制(同鬼才):直接 mutate frameCards —— 判定 atom 无现成 atom 承载"替换判定牌"
-//   操作。把判定牌(frameCards 顶)移入弃牌堆,把黑色手牌压入 frameCards 顶作为新判定牌。
+// 替换机制(同鬼才):走 flows/judge.ts 的 replaceJudgeCard —— 原判定牌(帧顶)经「移动牌」
+//   入弃牌堆、黑色手牌经「移动牌」压入帧顶成为新判定牌。必须经 atom 而非直接 mutate:
+//   替换牌离手(handCount)与原判定牌入弃牌堆(discardPileCount)都是公开信息,漏投影会让
+//   客户端视图与权威 buildView 永久漂移。
 //   消费方(闪电/雷击)之后读到的是替换后的牌。
 //
 // 顺序保证:改判在 afterApply 阶段、消费方在 runAfterHooks 阶段,前者严格先于后者。
@@ -18,6 +20,7 @@ import type { FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply'
 import { frameCards } from '../core/frame';
 import { registerAction, registerJudgeModifier } from '../core/skill';
+import { replaceJudgeCard } from '../flows/judge';
 
 const REPLACE_RT = '鬼道/replace';
 const REPLACE_CARD_KEY = '鬼道/replaceCard';
@@ -111,16 +114,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
     if (!me.hand.includes(replaceCardId)) return;
     if (!isBlackCard(ctx.state, replaceCardId)) return;
 
-    // 交换判定牌(直接 mutate frameCards,同鬼才/天妒模式,避免产生额外 ViewEvent
-    //   导致 processedView 与 buildView 不对称)
-    const cur = frameCards(ctx.state);
-    const lastIdx = cur.length - 1;
-    if (lastIdx < 0) return;
-    const originalJudgeId = cur[lastIdx];
-    cur.splice(lastIdx, 1);
-    ctx.state.zones.discardPile.push(originalJudgeId);
-    me.hand = me.hand.filter((id) => id !== replaceCardId);
-    cur.push(replaceCardId);
+    // 交换判定牌:原判定牌 → 弃牌堆,替换牌 → 处理区(帧顶)。
+    // 两步都走「移动牌」atom —— 直接 mutate frameCards 会漏掉「替换牌离手(handCount)」
+    // 与「原判定牌入弃牌堆(discardPileCount)」的视图投影,客户端会一直显示张角手里还有那张牌。
+    await replaceJudgeCard(ctx.state, ownerId, replaceCardId);
   });
 
   return () => {};

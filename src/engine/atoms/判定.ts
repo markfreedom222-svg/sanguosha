@@ -5,10 +5,9 @@
 // 上述时机由 judge-flow.ts 的 runJudgeFlow 编排,本 atom 仅做翻牌。
 //
 // 前端展示:判定牌是公开信息,toViewEvents 携带 card+cardId。
-// 判定牌在处理区“停留几秒”的视觉效果由前端 useDebugMultiConnection hook 负责
-// (在收到判定事件后临时把判定牌加入 view.zones.processing 展示,几秒后移除),
-// 不在 applyView 中处理——保持 applyView 与 buildView 一致。
-import type { AtomDefinition, GameView, ViewEventSplit, ViewEvent } from '../types';
+// applyView 与 apply 对称:deckCount -1 + 判定牌进 processing/帧牌区;
+// 判定牌离开处理区由后续 atom 投影(移动牌 / 收取判定牌),本 atom 不预支弃牌堆计数。
+import type { AtomDefinition, ViewEventSplit, ViewEvent } from '../types';
 
 export const 判定: AtomDefinition<{ player: number; judgeType: string }> = {
   type: '判定',
@@ -58,16 +57,20 @@ export const 判定: AtomDefinition<{ player: number; judgeType: string }> = {
     return { ownerViews: new Map(), othersView: view };
   },
   effect: { sound: 'flip', animation: 'flip', blockUntilDone: true, duration: 1800 },
-  applyView(view: GameView, _event: ViewEvent) {
-    // 后端 apply+afterHooks 净效果: deck -1, processing 不变(进后出), discardPile +1。
-    // applyView 对应净效果: deckCount -1, discardPileCount +1, processing 不变。
-    // ⚠️ 不能 processing.pop()——判定可能嵌套在其他 atom 的 hook 中(如八卦阵),processing
-    // 最后一张未必是判定牌。apply+afterHooks 净效果 = processing 不变。
-    // 判定牌在处理区的“停留几秒”展示由前端 useDebugMultiConnection hook 负责(展示层),
-    // 不在此处(数据层)处理——保持 applyView 与 buildView 一致。
+  applyView(view, _event) {
+    // 与 apply 对称:牌堆 -1,判定牌进结算帧牌区(processing)。
+    // 判定牌离开处理区的两条路径都有 atom 投影:
+    //   · 入弃牌堆 / 被天妒·双雄·落英 拿走 / 被鬼才·鬼道 改判替换 → 「移动牌」;
+    //   · 被屯田·界屯田 收作"田" → 「收取判定牌」。
+    // 故此处**不得**预支 discardPileCount +1:判定牌被收走时它根本没进弃牌堆,
+    // 预支会让增量视图的弃牌堆计数永久虚高 1(实测 屯田/双雄/天妒/界落英)。
     if (!view.zones) return;
+    const cardId = (_event as { cardId?: string }).cardId;
     view.zones.deckCount = Math.max(0, view.zones.deckCount - 1);
-    view.zones.discardPileCount += 1;
+    if (!cardId) return; // 牌堆为空:apply 早退,未翻牌
+    const f = view.settlementStack[view.settlementStack.length - 1];
+    if (f) f.cards.push(cardId);
+    view.zones.processing.push(cardId);
   },
   toViewLog(event) {
     const card = event.card as { name?: string; suit?: string; rank?: string } | undefined;

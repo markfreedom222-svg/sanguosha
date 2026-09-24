@@ -9,7 +9,7 @@
 //   4. 回合内失去牌:不触发(回合外限定)
 //   5. 田数量驱动距离修正(多次触发叠加)
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
@@ -66,7 +66,6 @@ describe('屯田', () => {
     // applyView 假设判定牌必然进弃牌堆(discardPileCount+1),导致 processedView.discardPileCount
     // 比 buildView 多 1(实测:期望 0,实际 1)。该 desync 属判定 atom 与屯田拿牌机制的交互,
     // 与 distanceVars 通道无关;故下方 expectView 仅断言 distanceVars 单字段,绕开该 desync。
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     // 判定牌:黑桃(非红桃)
@@ -117,12 +116,10 @@ describe('屯田', () => {
       expect(v.players[0].distanceVars?.attackMod).toBe(1);
     });
 
-    restoreAutoCompare();
   });
 
   // ─── 红桃:判定红桃 → 无田 ────────────────────
   it('判定红桃:不获得田', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     // 判定牌:红桃
@@ -157,12 +154,10 @@ describe('屯田', () => {
     // 判定牌进入弃牌堆(未被拿作田)
     expect(harness.state.zones.discardPile).toContain('j1');
 
-    restoreAutoCompare();
   });
 
   // ─── 不发动:可选不判定 ────────────────────
   it('不发动屯田:不加田', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     const judge = makeCard('j1', '杀', '♠', '7');
@@ -194,12 +189,10 @@ describe('屯田', () => {
     // 牌堆未消耗(没判定)
     expect(harness.state.zones.deck).toContain('j1');
 
-    restoreAutoCompare();
   });
 
   // ─── 回合内失去牌:不触发 ────────────────────
   it('回合内失去牌:屯田不触发', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     const judge = makeCard('j1', '杀', '♠', '7');
@@ -227,12 +220,10 @@ describe('屯田', () => {
     );
     expect(tianMarks.length).toBe(0);
 
-    restoreAutoCompare();
   });
 
   // ─── 多次触发叠加 ────────────────────
   it('多次失去牌叠加田数量,距离修正随之增加', async () => {
-    const restoreAutoCompare = disableAutoCompare();
 
     const p0c1 = makeCard('p0c1', '杀', '♠', '5');
     const p0c2 = makeCard('p0c2', '闪', '♣', '5');
@@ -282,7 +273,6 @@ describe('屯田', () => {
       expect(v.players[0].distanceVars?.attackMod).toBe(2);
     });
 
-    restoreAutoCompare();
   });
 
   // ─── 隔离验证:加标记 atom 的 distanceVars 通道(auto-compare 开启)─────

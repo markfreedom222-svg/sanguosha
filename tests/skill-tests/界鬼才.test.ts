@@ -14,8 +14,7 @@ import {
   SkillTestHarness,
   waitForStable,
   fireTimeoutAndWait,
-  disableAutoCompare,
-} from '../engine-harness';
+  } from '../engine-harness';
 import { applyAtom } from '../../src/engine/core/apply';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
@@ -96,8 +95,6 @@ describe('界鬼才', () => {
 
   it('手牌替换({choice:true, cardId}) → ♣5 替换后闪电不命中', async () => {
     const { state } = lightningScene(['r1']);
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界司马懿');
@@ -113,15 +110,10 @@ describe('界鬼才', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       expect(harness.state.zones.discardPile).toContain('r1');
       expect(harness.state.players[1].health).toBe(4); // ♣5 非黑桃 → 不命中
-    } finally {
-      restoreCompare();
-    }
   });
 
   it('回归:respond 仅带 {cardId} 无 choice → 同样替换判定牌', async () => {
     const { state } = lightningScene(['r1']);
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界司马懿');
@@ -138,15 +130,10 @@ describe('界鬼才', () => {
       expect(harness.state.players[0].hand).not.toContain('r1');
       expect(harness.state.zones.discardPile).toContain('r1');
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 
   it('不发动 → ♠5 命中,闪电主受 3 点伤害', async () => {
     const { state } = lightningScene([]);
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
 
@@ -156,9 +143,6 @@ describe('界鬼才', () => {
       await waitForStable(harness.state);
 
       expect(harness.state.players[1].health).toBe(1); // 4 - 3
-    } finally {
-      restoreCompare();
-    }
   });
 
   // ─── 回归(2026-08-27):装备牌改判在客户端不可达 ──────────────
@@ -193,8 +177,6 @@ describe('界鬼才', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-    const restoreCompare = disableAutoCompare();
-    try {
       state.players[0].equipment = { 武器: 'w1' };
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
@@ -222,15 +204,10 @@ describe('界鬼才', () => {
       expect(harness.state.zones.discardPile).toContain('w1');
       // ♣5 非黑桃 2-9 → 闪电不命中
       expect(harness.state.players[1].health).toBe(4);
-    } finally {
-      restoreCompare();
-    }
   });
 
   it('回归:respond({})(浏览器「不回应」形状)→ 不替换,判定按原牌结算', async () => {
     const { state } = lightningScene(['r1']);
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界司马懿');
@@ -247,8 +224,5 @@ describe('界鬼才', () => {
       // 手牌未动,♠5 原判定生效 → 闪电命中,3 点伤害
       expect(harness.state.players[0].hand).toContain('r1');
       expect(harness.state.players[1].health).toBe(1);
-    } finally {
-      restoreCompare();
-    }
   });
 });

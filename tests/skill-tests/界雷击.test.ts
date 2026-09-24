@@ -14,8 +14,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   SkillTestHarness,
   waitForStable,
-  disableAutoCompare,
-} from '../engine-harness';
+  } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
@@ -467,9 +466,6 @@ describe('界雷击', () => {
       phase: '出牌',
       turn: { round: 1, phase: '出牌', vars: {} },
     });
-    // 界鬼道替换判定牌(直接 mutate frameCards)→ processedView 与 buildView 不对称
-    const restoreCompare = disableAutoCompare();
-    try {
       state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
@@ -502,8 +498,5 @@ describe('界雷击', () => {
       expect(harness.state.players[1].health).toBe(2); // 4 - 2
       // 替换牌消耗
       expect(harness.state.players[0].hand).not.toContain('r1');
-    } finally {
-      restoreCompare();
-    }
   });
 });

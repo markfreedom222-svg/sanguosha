@@ -15,6 +15,7 @@
 // state.localVars['判定/finalJudgeCardId'],调用方据此读取判定结果。runJudgeFlow 返回该 cardId。
 import type { GameState } from '../types';
 import { applyAtom } from '../core/apply';
+import { frameCards } from '../core/frame';
 
 /** runJudgeFlow 收尾回写最终判定牌 cardId 的 localVars 键(与 cleanupJudgeCard 一致)。 */
 const JUDGE_FINAL_CARD_KEY = '判定/finalJudgeCardId';
@@ -70,8 +71,8 @@ export async function runJudgeFlow(
   await applyAtom(state, { type: '判定牌生效后', player, judgeType, cardId: finalCardId });
 
   // 收尾:把判定牌从结算帧移入弃牌堆(按 finalCardId 精确移除;
-  // 天妒/屯田 可能已在 生效后 拿走 → indexOf 为 -1,no-op)。
-  cleanupJudgeCard(state, finalCardId);
+  // 天妒/屯田 可能已在 生效后 拿走 → 找不到,no-op)。
+  await cleanupJudgeCard(state, finalCardId);
 
   return state.localVars[JUDGE_FINAL_CARD_KEY] as string | undefined;
 }
@@ -83,16 +84,53 @@ function topFrameCardId(state: GameState): string | undefined {
   return cards.length > 0 ? cards[cards.length - 1] : undefined;
 }
 
+/** 改判:把当前判定牌移入弃牌堆,再把替换牌从 owner 手牌打出到处理区(成为新判定牌)。
+ *
+ *  两步都走「移动牌」atom(而非直接 mutate frameCards):判定牌的进出必须经 view 通道投影,
+ *  否则增量视图(processedView / 前端 viewReducer)与权威 buildView 漂移——
+ *  直接 mutate 会漏掉「替换牌离手(handCount)」与「原判定牌入弃牌堆(discardPileCount)」
+ *  两项公开信息,客户端一直显示张角/司马懿手里还有那张牌。
+ *
+ *  先移除原判定牌再压入替换牌,保证帧顶(消费方读的判定牌)= 替换牌。
+ *  调用方需已保证替换牌在 owner 手牌中。 */
+export async function replaceJudgeCard(
+  state: GameState,
+  ownerId: number,
+  replaceCardId: string,
+): Promise<void> {
+  const cur = frameCards(state);
+  const originalJudgeId = cur[cur.length - 1];
+  if (originalJudgeId === undefined) return;
+  // 1) 原判定牌:处理区 → 弃牌堆(替换下来的牌进入弃牌堆)
+  await applyAtom(state, {
+    type: '移动牌',
+    cardId: originalJudgeId,
+    from: { zone: '处理区' },
+    to: { zone: '弃牌堆' },
+  });
+  // 2) 替换牌:手牌 → 处理区(帧顶 = 新判定牌)
+  await applyAtom(state, {
+    type: '移动牌',
+    cardId: replaceCardId,
+    from: { zone: '手牌', player: ownerId },
+    to: { zone: '处理区' },
+  });
+}
+
 /** 把最终判定牌从结算帧移入弃牌堆。
  *  按 finalCardId 精确定位(不盲取末尾):天妒/屯田 可能已在 判定牌生效后 拿走判定牌
  *  (结算帧空或已含其他嵌套牌),按 id 找不到即为 no-op,绝不误删帧内其他牌。
+ *  走「移动牌」atom 而非直接 mutate:弃牌堆 +1 与处理区 -1 都必须投影到增量视图。
  *  最终判定牌 cardId 已由 runJudgeFlow 在 生效后 hook 之前写入 localVars(此处不再记录)。 */
-function cleanupJudgeCard(state: GameState, finalCardId: string | undefined): void {
+async function cleanupJudgeCard(state: GameState, finalCardId: string | undefined): Promise<void> {
   if (finalCardId === undefined) return;
   const frame = state.settlementStack[state.settlementStack.length - 1];
   const cards = frame ? frame.cards : state.zones.processing;
-  const idx = cards.indexOf(finalCardId);
-  if (idx < 0) return;
-  cards.splice(idx, 1);
-  state.zones.discardPile.push(finalCardId);
+  if (!cards.includes(finalCardId)) return;
+  await applyAtom(state, {
+    type: '移动牌',
+    cardId: finalCardId,
+    from: { zone: '处理区' },
+    to: { zone: '弃牌堆' },
+  });
 }

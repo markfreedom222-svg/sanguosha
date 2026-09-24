@@ -27,7 +27,7 @@
 //   D14. 结束阶段:伤害牌已被其他技能拿走(不在弃牌堆)→ 跳过
 //   E15. 转化卡(影子卡)造成伤害:记录原卡 id(shadowOf),结束阶段获得原卡
 import { describe, it, expect, beforeEach } from 'vitest';
-import { SkillTestHarness, disableAutoCompare } from '../engine-harness';
+import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { applyAtom } from '../../src/engine/core/apply';
 import { runDamageFlow } from '../../src/engine/flows/damage';
@@ -81,7 +81,6 @@ describe('界双雄', () => {
   // ─── A1. 发动双雄:弃置黑色牌 → 记 color=黑 ─────────────────────
 
   it('摸牌阶段结束发动双雄 → 弃置黑色手牌 → 记 color=黑,弃置牌入弃牌堆', async () => {
-    const restoreAutoCompare = disableAutoCompare();
     const c1 = makeCard('c1', '闪', '♠', '2'); // 弃置代价(黑色)
     await harness.setup(
       createGameState({
@@ -123,7 +122,6 @@ describe('界双雄', () => {
     Y.expectView((v) => {
       expect(v.players[0].turnUsage?.['界双雄/color']).toBe('黑');
     });
-    restoreAutoCompare();
   });
 
   // ─── A2. 发动双雄:弃置红色牌 → 记 color=红 ─────────────────────
@@ -631,7 +629,6 @@ describe('界双雄', () => {
   //   本用例在带回合管理的完整 phase 推进中验证:双雄 pending resolve 后,出牌窗口
   //   slot 仍存活(非孤立),游戏处于可操作的出牌阶段。
   it('带回合管理:双雄发动后出牌窗口不被孤立(slot 冲突回归)', async () => {
-    const restoreAutoCompare = disableAutoCompare();
     const c1 = makeCard('c1', '闪', '♠', '2'); // 黑色弃置代价
     await harness.setup(
       createGameState({
@@ -675,6 +672,5 @@ describe('界双雄', () => {
     const slot = harness.state.pendingSlots.get(0);
     expect(slot).toBeDefined();
     expect((slot?.atom as { type?: string }).type).toBe('出牌窗口');
-    restoreAutoCompare();
   });
 });

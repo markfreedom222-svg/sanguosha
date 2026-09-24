@@ -797,6 +797,8 @@ let autoCompareEnabled = true;
 
 /** 关闭自动对比(返回恢复函数)。仅用于绕过已知不可比场景。 */
 export function disableAutoCompare(): () => void {
+  // 临时诊断开关:STRICT_VIEW_COMPARE=1 时忽略关闭请求,用现有用例扫出全部视图漂移。
+  if (process.env.STRICT_VIEW_COMPARE === '1') return () => {};
   const prev = autoCompareEnabled;
   autoCompareEnabled = false;
   return () => {
