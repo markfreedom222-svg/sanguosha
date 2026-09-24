@@ -171,4 +171,59 @@ describe('客户端枚举的转化技 action 引擎可接受(影子 id 约定)',
     });
     expect(result.accepted, '客户端枚举的界父魂转化必须被引擎接受').toBe(true);
   });
+
+  // 回归:多卡转化的产出牌由 transform 回调决定(乱击/界乱击 = 万箭齐发,非杀)。
+  // 客户端枚举若硬编码主 action 为 杀.use,引擎 validate 读影子卡名(万箭齐发)恒拒
+  // 「不是杀」→ 乱击/界乱击在无头/AI 客户端整类不可用。
+  it('乱击:枚举出的两张同花色牌转化万箭齐发 action 被接受', async () => {
+    const s1 = mkCard('s1', '杀', '♠', '5');
+    const s2 = mkCard('s2', '闪', '♠', '7');
+    const { state, actions } = await enumerateTransforms({
+      players: [
+        mkPlayer(0, 'P0', ['s1', 's2'], ['乱击', '杀', '回合管理']),
+        mkPlayer(1, 'P1', [], []),
+      ],
+      cardMap: { s1, s2 },
+      seat: 0,
+    });
+
+    const transform = actions.find((a) => a.message.preceding?.[0]?.skillId === '乱击');
+    expect(transform, '客户端应枚举出乱击转化').toBeDefined();
+    expect(transform!.message.skillId).toBe('万箭齐发');
+    expect(transform!.message.params.cardId).toBe('s1#s2#乱击');
+
+    const result = await dispatch(state, {
+      ...transform!.message,
+      params: { ...transform!.message.params },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(result.accepted, '客户端枚举的乱击转化必须被引擎接受').toBe(true);
+  });
+
+  it('界乱击:枚举出的两张同花色牌转化万箭齐发 action 被接受', async () => {
+    const s1 = mkCard('s1', '杀', '♠', '5');
+    const s2 = mkCard('s2', '闪', '♠', '7');
+    const { state, actions } = await enumerateTransforms({
+      players: [
+        mkPlayer(0, 'P0', ['s1', 's2'], ['界乱击', '杀', '回合管理']),
+        mkPlayer(1, 'P1', [], []),
+      ],
+      cardMap: { s1, s2 },
+      seat: 0,
+    });
+
+    const transform = actions.find((a) => a.message.preceding?.[0]?.skillId === '界乱击');
+    expect(transform, '客户端应枚举出界乱击转化').toBeDefined();
+    expect(transform!.message.skillId).toBe('万箭齐发');
+    expect(transform!.message.params.cardId).toBe('s1#s2#界乱击');
+
+    const result = await dispatch(state, {
+      ...transform!.message,
+      params: { ...transform!.message.params },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(result.accepted, '客户端枚举的界乱击转化必须被引擎接受').toBe(true);
+  });
 });

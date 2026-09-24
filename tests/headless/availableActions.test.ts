@@ -244,6 +244,21 @@ const zhangbaTransformAction: SkillActionDef = {
   transform: (card: Card) => ({ name: '杀', sourceCardId: card.id, fromSkill: '丈八蛇矛' }),
 };
 
+// 乱击/界乱击的 transform action(多卡转化,产出【万箭齐发】,AOE 无目标)
+const luanjiTransformAction: SkillActionDef = {
+  skillId: '乱击',
+  ownerId: 0,
+  actionType: 'transform',
+  label: '乱击',
+  prompt: {
+    type: 'useCardAndTarget',
+    title: '选择 2 张同花色的手牌当万箭齐发使用',
+    cardFilter: { filter: () => true, min: 2, max: 2 },
+    targetFilter: { min: 0, max: 0 },
+  },
+  transform: (card: Card) => ({ name: '万箭齐发', sourceCardId: card.id, fromSkill: '乱击' }),
+};
+
 // 梅花牌(连环/界连环转化原料)
 const clubCard: Card = { id: 'c4', name: '杀', suit: '♣', color: '黑', rank: '5', type: '基本牌' };
 
@@ -412,6 +427,26 @@ describe('enumerateAvailableActions', () => {
       expect(cardId).toBe(`${cardIds[0]}#${cardIds[1]}#丈八蛇矛`);
       expect(new Set(cardIds).size).toBe(2);
     }
+  });
+
+  // 回归:多卡转化(乱击/界乱击)的产出牌不是杀,主 action 必须由 transform 回调决定。
+  // 旧实现把多卡分支的 wrapperName 硬编码为 '杀' → 主 action 恒为 杀.use,
+  // 而引擎创建的影子卡名是【万箭齐发】→ 主 action validate 恒拒(不是杀),
+  // 乱击/界乱击在浏览器之外的 AI/无头客户端整类不可用。
+  it('乱击转化(多卡):主 action 由 transform 回调决定,产出【万箭齐发】', () => {
+    const spade1: Card = { id: 's1', name: '杀', suit: '♠', color: '黑', rank: '5', type: '基本牌' };
+    const spade2: Card = { id: 's2', name: '闪', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const view = makeView(0, '出牌', [spade1, spade2]);
+    const actions = enumerateAvailableActions(view, 0, [luanjiTransformAction]);
+    const tf = actions.filter((x) => x.category === 'transform');
+    expect(tf).toHaveLength(1);
+    const a = tf[0];
+    expect(a.message.skillId).toBe('万箭齐发');
+    expect(a.message.params.cardId).toBe('s1#s2#乱击');
+    expect(a.message.preceding).toEqual([
+      { skillId: '乱击', actionType: 'transform', params: { cardIds: ['s1', 's2'] } },
+    ]);
+    expect(a.description).toContain('万箭齐发');
   });
 
   // 回归:连环/界连环转化铁索连环。transform action 缺 transform 字段时,
