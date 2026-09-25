@@ -19,6 +19,13 @@ import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
 import type { Card, GameState } from '../../src/engine/types';
+import { enumerateAvailableActions } from '../../src/client/headless/availableActions';
+import {
+  registerSkillActions,
+  clearRegistry,
+  getActionsForPlayer,
+} from '../../src/client/skillActionRegistry';
+import { buildView, dispatch } from '../../src/engine/index';
 
 function makeCard(
   id: string,
@@ -300,6 +307,61 @@ describe('界强袭', () => {
       skillId: '界强袭',
       actionType: 'use',
       params: { cost: 'discard', target: 1, cardId: 's1' },
+    });
+  });
+
+  // ─── 客户端契约:声明层(paramVariants)与引擎 validate 必须同源 ────
+  // 回归:paramVariants 是从标版强袭照抄的 cost:'hp',而界强袭 validate 只认
+  // 'damage'|'discard' → 浏览器按钮与无头/AI 枚举出的「失去体力」分支提交即被拒,
+  // 该代价分支整类不可用(只有手写 cost:'damage' 的技能测试能过)。
+  describe('客户端声明(paramVariants)必须被引擎接受', () => {
+    async function variantActions() {
+      clearRegistry();
+      const state: GameState = createGameState({
+        players: [
+          makePlayer({ index: 0, name: 'P0', hand: ['w1'], skills: ['界强袭'] }),
+          makePlayer({ index: 1, name: 'P1', character: '曹操' }),
+          makePlayer({ index: 2, name: 'P2', character: '刘备' }),
+        ],
+        cardMap: { w1: makeWeapon('w1', '青釭剑', '♠', 2) },
+        currentPlayerIndex: 0,
+        phase: '出牌',
+        turn: { round: 1, phase: '出牌', vars: {} },
+      });
+      state.zones = { deck: [], discardPile: [], processing: [] };
+      await harness.setup(state);
+      clearRegistry();
+      await registerSkillActions(0, state.players[0].skills);
+      const view = buildView(state, 0);
+      return { state, view };
+    }
+
+    it('枚举出的每个代价变体原样提交都被接受', async () => {
+      const { view } = await variantActions();
+      const actions = enumerateAvailableActions(view, 0, getActionsForPlayer(0)).filter(
+        (a) => a.message.skillId === '界强袭',
+      );
+      expect(actions.length).toBeGreaterThan(0);
+      const costs = actions.map((a) => a.message.params.cost);
+      expect(costs).toContain('discard');
+
+      for (const a of actions) {
+        // 每个变体在全新 state 上提交(界强袭每阶段限两次 + 目标去重)
+        const { state, view: freshView } = await variantActions();
+        const params = { ...a.message.params } as Record<string, unknown>;
+        if (params.cost === 'discard') params.cardId = 'w1'; // 变体标签:需补武器 cardId
+        const target = (a.validTargets[0] ?? 1) as number;
+        const res = await dispatch(state, {
+          ...a.message,
+          params: { ...params, target, targets: [target] },
+          ownerId: 0,
+          baseSeq: state.seq,
+        });
+        expect(
+          res.accepted,
+          `客户端声明的变体 ${JSON.stringify(a.message.params)} 必须被引擎接受(当前 view=${!!freshView})`,
+        ).toBe(true);
+      }
     });
   });
 });

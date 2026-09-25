@@ -20,7 +20,7 @@
 // 命名:文件名/loader key/character skill name 均为 '界强袭'(避开标强袭冲突);
 //   内部 Skill.name = '强袭'(OL 官方技能名,玩家可见)。
 import type { FrontendAPI, GameState, Json, Skill } from '../types';
-import { applyAtom } from '../core/apply'
+import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame } from '../core/frame';
 import { runDamageFlow } from '../flows/damage';
 import { defaultPlayActive } from '../rules/action-active';
@@ -172,10 +172,12 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
           return true;
         },
       },
-      // 代价二选一(官方「失去1点体力或弃置一张武器牌」):提交时除 target 外必须带 cost。
+      // 代价二选一(官方界版「受到1点伤害或弃置一张武器牌」):提交时除 target 外必须带 cost。
       // 枚举层(无头客户端/AI)按变体展开生成可执行 action;弃武器分支还需补 cardId(武器牌)。
+      // cost 取值与引擎 validate 同源(界强袭只认 'damage'|'discard')——照抄标版强袭的 'hp'
+      // 会让「受到1点伤害」分支提交即被拒,该代价分支在浏览器/AI 整类不可用。
       paramVariants: [
-        { label: '失去1点体力', params: { cost: 'hp' } },
+        { label: '受到1点伤害', params: { cost: 'damage' } },
         { label: '弃一张武器牌(需补 cardId)', params: { cost: 'discard' } },
       ],
     },
