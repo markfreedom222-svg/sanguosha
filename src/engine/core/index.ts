@@ -14,11 +14,7 @@ import type {
 import { createGameState } from '../types';
 import { VirtualClock } from './clock';
 import { buildView as buildViewImpl } from '../view/buildView';
-import {
-  findActionEntry,
-  findPendingSlot,
-  setSkillInstanceUnload,
-} from './skill';
+import { findActionEntry, findPendingSlot, setSkillInstanceUnload } from './skill';
 // unloadSkillInstance 已迁至 skills/lifecycle.ts（可直接访问 skillLoaders/cardEffectMap）
 import { unloadSkillInstance } from '../skills/lifecycle';
 import { createStandardDeck } from './deck';
@@ -304,7 +300,48 @@ export interface DispatchResult {
   settle: Promise<Error | undefined>;
 }
 
-export async function dispatch(state: GameState, message: ClientMessage): Promise<DispatchResult> {
+/**
+ * 目标形状归一(dispatch 边界)。
+ *
+ * 客户端对「目标」有两种 wire 形状(见 client/utils/gameViewHelpers.buildPlayParams):
+ *   · 普通牌 / 技能代价牌(非延时锦囊)→ { targets: [idx] }
+ *   · 延时锦囊 → { target: idx }
+ * 回应路径(useCardAndTarget 型 pending)固定发 targets(usePlayInteraction.handleRespond)。
+ *
+ * 引擎侧各技能读法不一:使用牌 skill 自带 target→targets 归一,但**自带 use/respond action
+ * 的技能**(断粮/界断粮/审时/驱虎/天义/界巧说/界陷阵/天香/乱武 …)拿不到它 →
+ *   · 只读单数 target 的技能对 targets 形状恒拒(「需要选择目标」);
+ *   · 只读 targets 的技能(界火计)对延时锦囊代价牌(单数 target)恒拒。
+ * 两者都让整类技能在浏览器与 AI 客户端不可用,且只有手写另一种形状的测试能过。
+ *
+ * 在消息入口把两种形状补齐(已有值不覆盖;单数只取 targets[0],多目标牌不受影响),
+ * 技能读任一形状都成立。preceding 的 params 同样归一(转化技的代价/目标形状一致)。
+ */
+function normalizeTargetShape(params: Record<string, Json>): Record<string, Json> {
+  const target = typeof params.target === 'number' ? params.target : undefined;
+  const targets = Array.isArray(params.targets) ? params.targets : undefined;
+  if (target !== undefined && targets !== undefined) return params;
+  if (target !== undefined) return { ...params, targets: [target] };
+  const first = targets && typeof targets[0] === 'number' ? (targets[0] as number) : undefined;
+  if (first !== undefined) return { ...params, target: first };
+  return params;
+}
+
+function normalizeMessageTargetShape(message: ClientMessage): ClientMessage {
+  const params = normalizeTargetShape(message.params);
+  const preceding = message.preceding?.map((p) => ({
+    ...p,
+    params: normalizeTargetShape(p.params),
+  }));
+  if (params === message.params && preceding === message.preceding) return message;
+  return { ...message, params, ...(preceding ? { preceding } : {}) };
+}
+
+export async function dispatch(
+  state: GameState,
+  rawMessage: ClientMessage,
+): Promise<DispatchResult> {
+  const message = normalizeMessageTargetShape(rawMessage);
   // settle 信号:execute 是 fire-and-forget,restore 需要知道它何时「挂起或完成」。
   // 挂起点由 createAndAwaitSlot 在 slot 入 pendingSlots 后调 state.onExecuteSettle 通知;
   // 执行完成由下方 .finally(settleAfterDrain) 通知。两处竞争,settled 防重入只 resolve 一次。
