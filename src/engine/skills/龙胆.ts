@@ -20,6 +20,12 @@ export function createSkill(id: string, ownerId: number): Skill {
   };
 }
 
+/** 源卡名 → 转化目标牌名(双向映射;每张源卡唯一确定目标) */
+const TRANSFORM_MAP: Record<string, string> = {
+  杀: '闪',
+  闪: '杀',
+};
+
 /** 影子卡 id:${原id}#龙胆(单卡转化,同一张牌只可能转一个方向) */
 function shadowIdOf(cardId: string): string {
   return `${cardId}#龙胆`;
@@ -28,7 +34,10 @@ function shadowIdOf(cardId: string): string {
 export function onInit(skill: Skill, state: GameState): () => void {
   const ownerId = skill.ownerId;
   // transform action:把一张手牌(杀/闪)转化为影子"闪"/"杀"。
-  // params.to 决定转化方向与产出牌名。作为 preceding 在 闪.respond / 杀.use / 杀.respond 之前执行。
+  // params.to 决定转化方向与产出牌名;缺省时由原卡名推导(浏览器 usePlayInteraction 与
+  // 无头 availableActions 构造的 preceding 都只带 cardId——方向由 transform(card).name 决定,
+  // 不放进 params;引擎硬性要求 to 会让所有真实客户端的龙胆转化恒被拒)。
+  // 作为 preceding 在 闪.respond / 杀.use / 杀.respond 之前执行。
   registerAction(
     state,
     skill.id,
@@ -38,24 +47,28 @@ export function onInit(skill: Skill, state: GameState): () => void {
       const self = state.players[ownerId];
       const selfAlive = self?.alive === true;
       const cardId = params.cardId as string;
-      const to = params.to as string;
       const cardIdOk = typeof cardId === 'string';
       const card = cardIdOk ? state.cardMap[cardId] : undefined;
       const cardInHand = cardIdOk && self.hand.includes(cardId);
       if (!selfAlive) return '你已死亡';
       if (!cardIdOk || !cardInHand) return '牌不在手牌中';
-      if (to === '闪') {
-        if (card?.name !== '杀') return '只能将杀当闪';
-      } else if (to === '杀') {
-        if (card?.name !== '闪') return '只能将闪当杀';
-      } else {
+      // 推导/校验 to:to 缺省时按原卡名推导;给定时须与原卡名的映射一致
+      const expectedTo = card ? TRANSFORM_MAP[card.name] : undefined;
+      const to = (params.to as string | undefined) ?? expectedTo;
+      if (!expectedTo) return '只能将杀当闪或将闪当杀';
+      if (to !== expectedTo) {
+        if (to === '闪') return '只能将杀当闪';
+        if (to === '杀') return '只能将闪当杀';
         return '无效的转化方向';
       }
       return null;
     },
     async (state: GameState, params: Record<string, Json>) => {
       const cardId = params.cardId as string;
-      const to = params.to as string;
+      const card = state.cardMap[cardId];
+      // validate 已保证原卡可转化(TRANSFORM_MAP 命中);to 缺省时按原卡名推导
+      const to = (params.to as string | undefined) ?? (card ? TRANSFORM_MAP[card.name] : undefined);
+      if (!to) return; // validate 已拦截,防御性兜底
       const shadowId = shadowIdOf(cardId);
       // 通过 atom 走完整 pipeline(产生 ViewEvent,保证 processedView 同步)
       await applyAtom(state, {
@@ -78,7 +91,10 @@ export function onInit(skill: Skill, state: GameState): () => void {
   );
   const unloadDodge = declareAlternativeResponse(state, ownerId, '询问闪');
   const unloadSlash = declareAlternativeResponse(state, ownerId, '询问杀');
-  return () => { unloadDodge(); unloadSlash(); };
+  return () => {
+    unloadDodge();
+    unloadSlash();
+  };
 }
 
 export function onMount(skill: Skill, api: FrontendAPI): void {
@@ -99,9 +115,7 @@ export function onMount(skill: Skill, api: FrontendAPI): void {
         filter: (view: GameView, t: number) => {
           // 仅 闪→杀(出杀)需要目标;杀→闪 是 respond 无目标,前端按上下文决定
           const me = view.currentPlayerIndex;
-          return view.players.some(
-            (p, i) => i === me,
-          ) && t !== me && view.players[t]?.alive;
+          return view.players.some((p, i) => i === me) && t !== me && view.players[t]?.alive;
         },
       },
     },

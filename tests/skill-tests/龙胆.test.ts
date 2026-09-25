@@ -8,12 +8,7 @@ import { createGameState } from '../../src/engine/types';
 import { suitColor } from '../../src/engine/types';
 import type { Card, GameState, PlayerState } from '../../src/engine/types';
 
-function makeCard(
-  id: string,
-  name: string,
-  suit: '♠' | '♥' | '♣' | '♦' = '♠',
-  rank = 'A',
-): Card {
+function makeCard(id: string, name: string, suit: '♠' | '♥' | '♣' | '♦' = '♠', rank = 'A'): Card {
   return { id, name, suit, color: suitColor(suit), rank, type: '基本牌' };
 }
 
@@ -67,12 +62,10 @@ describe('龙胆', () => {
     const P2 = harness.player('P2');
 
     // 转化闪→杀 + 出杀
-    await P1.transformThenUse(
-      '龙胆',
-      { cardId: 'd1', to: '杀' },
-      '杀',
-      { cardId: 'd1#龙胆', targets: [1] },
-    );
+    await P1.transformThenUse('龙胆', { cardId: 'd1', to: '杀' }, '杀', {
+      cardId: 'd1#龙胆',
+      targets: [1],
+    });
 
     // 影子卡已建立
     expect(harness.state.cardMap['d1#龙胆'].name).toBe('杀');
@@ -215,6 +208,74 @@ describe('龙胆', () => {
     });
   });
 
+  // ─── 客户端契约:客户端不传 params.to(方向由原卡名唯一确定) ────────
+  // 浏览器 usePlayInteraction 与无头 availableActions 构造的 preceding 只有 { cardId }
+  // (方向由 action.transform(card).name 决定,不放进 params)。引擎若硬性要求 params.to,
+  // 则所有真实客户端提交的龙胆转化恒被拒 → 整个技能不可用(只有手写 to 的测试能过)。
+  it('客户端风格消息(不带 params.to):闪当杀被接受,方向由原卡名推导', async () => {
+    const dodge = makeCard('d1', '闪', '♥', '2');
+    const state: GameState = createGameState({
+      players: [
+        makePlayer({ index: 0, name: 'P1', hand: ['d1'], skills: ['龙胆', '杀'] }),
+        makePlayer({ index: 1, name: 'P2', skills: ['闪'] }),
+      ],
+      cardMap: { d1: dodge },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    await harness.setup(state);
+    const P1 = harness.player('P1');
+    const P2 = harness.player('P2');
+
+    const accepted = await P1.tryDispatch({
+      skillId: '杀',
+      actionType: 'use',
+      params: { cardId: 'd1#龙胆', targets: [1] },
+      preceding: [{ skillId: '龙胆', actionType: 'transform', params: { cardId: 'd1' } }],
+    });
+    expect(accepted, '不带 to 的龙胆转化必须被接受(方向由原卡名推导)').toBe(true);
+    await harness.waitForStable();
+    harness.processAllEvents();
+
+    // 影子卡方向正确:闪 → 杀
+    expect(harness.state.cardMap['d1#龙胆'].name).toBe('杀');
+    await P2.pass();
+    expect(harness.state.players[1].health).toBe(3);
+  });
+
+  it('客户端风格消息(不带 params.to):杀当闪被接受', async () => {
+    const kill = makeCard('k1', '杀', '♠', '7');
+    const kill2 = makeCard('k2', '杀', '♣', '8');
+    const state: GameState = createGameState({
+      players: [
+        makePlayer({ index: 0, name: 'P1', hand: ['k1'], skills: ['杀'] }),
+        makePlayer({ index: 1, name: 'P2', hand: ['k2'], skills: ['龙胆', '闪'] }),
+      ],
+      cardMap: { k1: kill, k2: kill2 },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    await harness.setup(state);
+    const P1 = harness.player('P1');
+    const P2 = harness.player('P2');
+
+    await P1.useCardAndTarget('杀', 'k1', [1]);
+    P2.expectPending('询问闪');
+
+    const accepted = await P2.tryDispatch({
+      skillId: '闪',
+      actionType: 'respond',
+      params: { cardId: 'k2#龙胆' },
+      preceding: [{ skillId: '龙胆', actionType: 'transform', params: { cardId: 'k2' } }],
+    });
+    expect(accepted, '不带 to 的龙胆回应转化必须被接受').toBe(true);
+    await harness.waitForStable();
+    harness.processAllEvents();
+    expect(harness.state.players[1].health).toBe(4);
+  });
+
   // ─── rollback:转化后主 action 失败 → 原卡还原 ──────────────────
   it('rollback:闪当杀但无目标 → 杀.validate 失败,原卡还原', async () => {
     const dodge = makeCard('d1', '闪', '♥', '2');
@@ -237,7 +298,9 @@ describe('龙胆', () => {
       actionType: 'use',
       params: {
         cardId: 'd1#龙胆',
-        preceding: [{ skillId: '龙胆', actionType: 'transform', params: { cardId: 'd1', to: '杀' } }],
+        preceding: [
+          { skillId: '龙胆', actionType: 'transform', params: { cardId: 'd1', to: '杀' } },
+        ],
       },
     });
 
