@@ -65,8 +65,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
       const cardsExist = !!c1 && !!c2;
       // 乱击核心条件:两张牌花色相同(同花色)
       const sameSuit = !!c1 && !!c2 && c1.suit !== '' && c1.suit === c2.suit;
-      const ok =
-        myTurn && inActPhase && free && selfAlive && cardInHand && cardsExist && sameSuit;
+      const ok = myTurn && inActPhase && free && selfAlive && cardInHand && cardsExist && sameSuit;
       return ok ? null : '乱击需要两张同花色的手牌';
     },
     async (state: GameState, params: Record<string, Json>) => {
@@ -103,8 +102,9 @@ export function onMount(skill: Skill, api: FrontendAPI): void {
   // 前端:乱击是多卡转化技。transform 把选中两张同花色手牌包装成 CardWrapper。
   // 前端通过 prompt.cardFilter.min/max (2..2) 识别多卡选牌,
   // 进入多选转化模式,提交 preceding params.cardIds=[id1,id2]。
-  // 同花色配对校验由后端 validate 兜底;前端 filter 放宽为任意手牌(单卡无法判断配对),
-  // activeWhen 保证仅当存在同花色对时才显示按钮。
+  // 同花色配对校验由后端 validate 兜底;单卡 filter 无法表达「两张牌之间」的约束,
+  // 故用 comboFilter 声明——无头枚举/浏览器据此过滤组合,否则会枚举/提交出引擎必拒的动作
+  // (AI 反复挑中同一非法组合 → 空转)。activeWhen 保证仅当存在同花色对时才显示按钮。
   api.defineAction('transform', {
     label: '乱击',
     style: 'danger',
@@ -113,7 +113,12 @@ export function onMount(skill: Skill, api: FrontendAPI): void {
       // 无需选目标,targetFilter max=0 表示不强制选目标(直接提交)。
       type: 'useCardAndTarget',
       title: '选择 2 张同花色的手牌当万箭齐发使用',
-      cardFilter: { filter: () => true, min: 2, max: 2 },
+      cardFilter: {
+        filter: () => true,
+        min: 2,
+        max: 2,
+        comboFilter: (cards: Card[]) => cards[0]?.suit === cards[1]?.suit,
+      },
       targetFilter: { min: 0, max: 0 },
     },
     // transform 接收第一张选中卡,返回 CardWrapper(供前端显示"万箭齐发")。

@@ -425,7 +425,13 @@ function luangeAction(ownerId = 0): SkillActionDef {
     prompt: {
       type: 'useCardAndTarget',
       title: '乱击',
-      cardFilter: { filter: () => true, min: 2, max: 2 },
+      cardFilter: {
+        filter: () => true,
+        min: 2,
+        max: 2,
+        // 镜像引擎 skills/乱击.ts 的声明:同花色配对约束
+        comboFilter: (cards: Card[]) => cards[0]?.suit === cards[1]?.suit,
+      },
       targetFilter: { min: 0, max: 0 },
     },
     transform: (card) => ({ name: '万箭齐发', sourceCardId: card.id, fromSkill: '乱击' }),
@@ -449,7 +455,12 @@ function wanjianUseAction(ownerId = 0): SkillActionDef {
 
 /** 可配置出牌阶段视图;P1 可装武器/置为死亡。 */
 function makePlayView(
-  opts: { currentPlayerIndex?: number; phase?: GameView['phase']; p1Alive?: boolean; p1Weapon?: string } = {},
+  opts: {
+    currentPlayerIndex?: number;
+    phase?: GameView['phase'];
+    p1Alive?: boolean;
+    p1Weapon?: string;
+  } = {},
 ): GameView {
   return {
     viewer: 0,
@@ -534,9 +545,12 @@ function makePlayParams(opts: {
  * 触发 hook 内 `useEffect(...,[pending])` 反复 setState → 无限渲染循环(内存溢出)。
  */
 function renderPlay(p: PlayInteractionParams, isMyTurn = true, canOperate = true) {
-  return renderHook((params: PlayInteractionParams) => usePlayInteraction(isMyTurn, canOperate, params), {
-    initialProps: p,
-  });
+  return renderHook(
+    (params: PlayInteractionParams) => usePlayInteraction(isMyTurn, canOperate, params),
+    {
+      initialProps: p,
+    },
+  );
 }
 
 /** 读 vi.fn() send 的调用参数(去掉 preceding 形参,聚焦 skillId/actionType/params)。 */
@@ -708,7 +722,11 @@ describe('usePlayInteraction · handlePlayCard(出牌参数构造)', () => {
     act(() => result.current.handleTargetClick('P0')); // B
     act(() => result.current.handlePlayCard());
     expect(sentCalls(send)).toEqual([
-      { skillId: '借刀杀人', actionType: 'use', params: { cardId: 'c-borrow', target: 1, killTarget: 0 } },
+      {
+        skillId: '借刀杀人',
+        actionType: 'use',
+        params: { cardId: 'c-borrow', target: 1, killTarget: 0 },
+      },
     ]);
   });
 });
@@ -788,7 +806,19 @@ describe('usePlayInteraction · handleTargetClick(铁索连环多目标)', () =>
       players: [
         makePlayView().players[0],
         makePlayView().players[1],
-        { index: 2, name: 'P2', character: 'Y', health: 4, maxHealth: 4, alive: true, equipment: {}, skills: [], handCount: 0, hand: [], marks: [] },
+        {
+          index: 2,
+          name: 'P2',
+          character: 'Y',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: [],
+          handCount: 0,
+          hand: [],
+          marks: [],
+        },
       ],
     };
     const { result } = renderPlay(
@@ -1058,7 +1088,10 @@ describe('usePlayInteraction · 弃牌窗口(selectedForDiscard)', () => {
   ): PlayInteractionParams {
     const pending: PendingView = {
       type: 'awaits',
-      atom: { type: '请求回应', params: { requestType: '__弃牌' } } as unknown as PendingView['atom'],
+      atom: {
+        type: '请求回应',
+        params: { requestType: '__弃牌' },
+      } as unknown as PendingView['atom'],
       prompt: { type: 'confirm', title: '弃牌' },
       target: 0,
       isBlocking: true,
@@ -1077,7 +1110,9 @@ describe('usePlayInteraction · 弃牌窗口(selectedForDiscard)', () => {
   }
 
   it('选牌增删:点已选取消,点未选追加(保持插入顺序)', () => {
-    const { result } = renderPlay(discardParams(vi.fn(), [KILL_CARD, PEACH_CARD, TRICK_CARD], 1, 2));
+    const { result } = renderPlay(
+      discardParams(vi.fn(), [KILL_CARD, PEACH_CARD, TRICK_CARD], 1, 2),
+    );
     act(() => result.current.handleCardClick(KILL_CARD));
     act(() => result.current.handleCardClick(PEACH_CARD));
     expect(result.current.selectedForDiscard).toEqual(['c-kill', 'c-peach']);
@@ -1087,7 +1122,9 @@ describe('usePlayInteraction · 弃牌窗口(selectedForDiscard)', () => {
   });
 
   it('FIFO 淘汰:选满 discardMax 后再选新牌→自动取消最早选中的那张', () => {
-    const { result } = renderPlay(discardParams(vi.fn(), [KILL_CARD, PEACH_CARD, TRICK_CARD], 1, 2));
+    const { result } = renderPlay(
+      discardParams(vi.fn(), [KILL_CARD, PEACH_CARD, TRICK_CARD], 1, 2),
+    );
     act(() => result.current.handleCardClick(KILL_CARD)); // [c-kill]
     act(() => result.current.handleCardClick(PEACH_CARD)); // [c-kill, c-peach] 已满 max=2
     // 再选第三张 → 淘汰最早选中的 c-kill,把 c-trick 追加到末尾
@@ -1151,7 +1188,11 @@ describe('usePlayInteraction · 弃牌窗口(selectedForDiscard)', () => {
 describe('usePlayInteraction · handleRespond(回应询问)', () => {
   function respondParams(
     send: ReturnType<typeof vi.fn>,
-    opts: { cardFilter?: (c: Card) => boolean; pendingTargetIdx?: number; markSkip?: (k: string) => void } = {},
+    opts: {
+      cardFilter?: (c: Card) => boolean;
+      pendingTargetIdx?: number;
+      markSkip?: (k: string) => void;
+    } = {},
   ): PlayInteractionParams {
     const pending: PendingView = {
       type: 'awaits',
@@ -1225,9 +1266,7 @@ describe('usePlayInteraction · handleRespond(回应询问)', () => {
     const send = vi.fn();
     const { result } = renderPlay(respondParams(send, { pendingTargetIdx: 1 }));
     act(() => result.current.handleRespond());
-    expect(sentCalls(send)).toEqual([
-      { skillId: '闪', actionType: 'respond', params: {} },
-    ]);
+    expect(sentCalls(send)).toEqual([{ skillId: '闪', actionType: 'respond', params: {} }]);
   });
 });
 
@@ -1333,9 +1372,7 @@ describe('usePlayInteraction · 转化模式(transformMode)', () => {
     // 提交
     act(() => result.current.handleTransformPlay('P1'));
     expect(send.mock.calls[0][0]).toBe('杀');
-    expect((send.mock.calls[0][2] as Record<string, Json>).cardId).toBe(
-      'c-red-b#c-red-a#丈八蛇矛',
-    );
+    expect((send.mock.calls[0][2] as Record<string, Json>).cardId).toBe('c-red-b#c-red-a#丈八蛇矛');
   });
 
   it('多卡转化选牌不足 minCards 时 handleTransformPlay 不发送', () => {
@@ -1387,6 +1424,46 @@ describe('usePlayInteraction · 转化模式(transformMode)', () => {
     expect(preceding).toEqual([
       { skillId: '乱击', actionType: 'transform', params: { cardIds: ['c-red-a', 'c-red-b'] } },
     ]);
+  });
+
+  // 回归:组合约束(comboFilter)未在提交侧生效 → 玩家能选中不同花色的两张牌提交,
+  // 引擎 validate 拒「乱击需要两张同花色的手牌」(点了没反应);AI 侧同源缺口见
+  // tests/headless/availableActions.test.ts「comboFilter 生效」。
+  it('多卡转化组合约束(乱击两张同花色):混花色选中 → canSubmit=false 且不发送', () => {
+    const send = vi.fn();
+    const spadeA = makeCard({ id: 'c-spade-a', name: '杀', suit: '♠', color: '黑' });
+    const heartB = makeCard({ id: 'c-heart-b', name: '闪', suit: '♥', color: '红' });
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [luangeAction(), wanjianUseAction()],
+        perspectiveHand: [spadeA, heartB],
+        send,
+      }),
+    );
+    act(() => result.current.handleSkillAction(luangeAction()));
+    act(() => result.current.handleCardClick(spadeA));
+    act(() => result.current.handleCardClick(heartB));
+    expect(result.current.transformMode?.selectedCardIds).toEqual(['c-spade-a', 'c-heart-b']);
+    // 组合不满足约束 → 提交被拦(按钮禁用同源)
+    expect(result.current.transformSubmit?.canSubmit).toBe(false);
+    act(() => result.current.handleTransformPlay(''));
+    expect(send).not.toHaveBeenCalled();
+
+    // 换成同花色的两张 → 可提交
+    const spadeC = makeCard({ id: 'c-spade-c', name: '桃', suit: '♠', color: '黑' });
+    const { result: r2 } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [luangeAction(), wanjianUseAction()],
+        perspectiveHand: [spadeA, spadeC],
+        send: vi.fn(),
+      }),
+    );
+    act(() => r2.current.handleSkillAction(luangeAction()));
+    act(() => r2.current.handleCardClick(spadeA));
+    act(() => r2.current.handleCardClick(spadeC));
+    expect(r2.current.transformSubmit?.canSubmit).toBe(true);
   });
 
   it('多卡转化 FIFO 淘汰:选满 maxCards 后再选新牌→取消最早选中的', () => {
@@ -1561,11 +1638,7 @@ describe('usePlayInteraction · distribute 选牌与提交', () => {
       TRICK_CARD.id,
     ]);
     act(() => result.current.handleDistSelectAll());
-    expect([...result.current.distSelected]).toEqual([
-      KILL_CARD.id,
-      PEACH_CARD.id,
-      TRICK_CARD.id,
-    ]);
+    expect([...result.current.distSelected]).toEqual([KILL_CARD.id, PEACH_CARD.id, TRICK_CARD.id]);
   });
 
   it('handleDistSelectAll(select 模式)受 maxTotal 截断,取前 maxTotal 张', () => {
@@ -1711,7 +1784,9 @@ describe('usePlayInteraction · distribute(遗计 allocate 被动分配)', () =>
   });
 
   it('isTargetable 在 select 模式始终返回 false(制衡无目标)', () => {
-    const { result } = renderPlay(pendingDistributeParams(vi.fn(), { ...yijiPrompt(), mode: 'select' }));
+    const { result } = renderPlay(
+      pendingDistributeParams(vi.fn(), { ...yijiPrompt(), mode: 'select' }),
+    );
     expect(result.current.isTargetable(0)).toBe(false);
     expect(result.current.isTargetable(1)).toBe(false);
   });
@@ -1719,9 +1794,7 @@ describe('usePlayInteraction · distribute(遗计 allocate 被动分配)', () =>
   it('点玩家分配超过 maxPerTarget 时不新增该目标的分配', () => {
     const send = vi.fn();
     // maxPerTarget=1:一次选 2 张分配给同一玩家会被拒
-    const { result } = renderPlay(
-      pendingDistributeParams(send, yijiPrompt({ maxPerTarget: 1 })),
-    );
+    const { result } = renderPlay(pendingDistributeParams(send, yijiPrompt({ maxPerTarget: 1 })));
     act(() => result.current.handleDistToggle('d1'));
     act(() => result.current.handleDistToggle('d2'));
     act(() => result.current.handleTargetClick('P1'));
@@ -1735,9 +1808,7 @@ describe('usePlayInteraction · distribute(遗计 allocate 被动分配)', () =>
 
   it('handleDistAllocate 达 maxPerTarget 后不再向该目标追加', () => {
     const send = vi.fn();
-    const { result } = renderPlay(
-      pendingDistributeParams(send, yijiPrompt({ maxPerTarget: 1 })),
-    );
+    const { result } = renderPlay(pendingDistributeParams(send, yijiPrompt({ maxPerTarget: 1 })));
     act(() => result.current.handleDistToggle('d1'));
     act(() => result.current.handleDistAllocate(1));
     expect(result.current.distAllocations).toEqual([{ target: 1, cardIds: ['d1'] }]);
@@ -1760,9 +1831,7 @@ describe('usePlayInteraction · distribute(遗计 allocate 被动分配)', () =>
 
   it('allocate 提交总数不足 minTotal 时不发送', () => {
     const send = vi.fn();
-    const { result } = renderPlay(
-      pendingDistributeParams(send, yijiPrompt({ minTotal: 3 })),
-    );
+    const { result } = renderPlay(pendingDistributeParams(send, yijiPrompt({ minTotal: 3 })));
     act(() => result.current.handleDistToggle('d1'));
     act(() => result.current.handleTargetClick('P1')); // 只分配 1 张 < minTotal 3
     act(() => result.current.handleDistSubmit());
@@ -1861,9 +1930,7 @@ describe('usePlayInteraction · 回合结束 / 选区清理', () => {
     const send = vi.fn();
     const { result } = renderPlay(makePlayParams({ view: makePlayView(), skillActions: [], send }));
     act(() => result.current.handleEndTurn());
-    expect(sentCalls(send)).toEqual([
-      { skillId: '回合管理', actionType: 'end', params: {} },
-    ]);
+    expect(sentCalls(send)).toEqual([{ skillId: '回合管理', actionType: 'end', params: {} }]);
   });
 
   it('handleEndTurn 非自己回合不发送', () => {
@@ -1923,8 +1990,7 @@ describe('usePlayInteraction · altActions(替代出牌方式)', () => {
       },
       activeWhen: (ctx) =>
         defaultPlayActive(ctx) &&
-        (ctx.view.players[ctx.perspectiveIdx]?.hand?.some((c) => c.name === '铁索连环') ??
-          false),
+        (ctx.view.players[ctx.perspectiveIdx]?.hand?.some((c) => c.name === '铁索连环') ?? false),
     };
   }
 
@@ -1943,8 +2009,7 @@ describe('usePlayInteraction · altActions(替代出牌方式)', () => {
       },
       activeWhen: (ctx) =>
         defaultPlayActive(ctx) &&
-        (ctx.view.players[ctx.perspectiveIdx]?.hand?.some((c) => c.name === '铁索连环') ??
-          false),
+        (ctx.view.players[ctx.perspectiveIdx]?.hand?.some((c) => c.name === '铁索连环') ?? false),
     };
   }
 
@@ -2037,14 +2102,22 @@ describe('usePlayInteraction · altActions(替代出牌方式)', () => {
       ownerId: 0,
       actionType: 'respond',
       label: '出桃',
-      prompt: { type: 'useCard', title: '出桃救援', cardFilter: { filter: (c) => c.name === '桃', min: 1, max: 1 } },
+      prompt: {
+        type: 'useCard',
+        title: '出桃救援',
+        cardFilter: { filter: (c) => c.name === '桃', min: 1, max: 1 },
+      },
     };
     const fireRespond: SkillActionDef = {
       skillId: '火攻',
       ownerId: 0,
       actionType: 'respond',
       label: '火攻',
-      prompt: { type: 'useCard', title: '火攻', cardFilter: { filter: () => true, min: 1, max: 1 } },
+      prompt: {
+        type: 'useCard',
+        title: '火攻',
+        cardFilter: { filter: () => true, min: 1, max: 1 },
+      },
     };
     const view = makePlayView();
     view.players[0].hand = [PEACH_CARD];
@@ -2065,10 +2138,7 @@ describe('usePlayInteraction · altActions(替代出牌方式)', () => {
 
 describe('usePlayInteraction · 桃满血限制(activeWhen)', () => {
   /** 与 engine/skills/桃.ts onMount 声明同源的 activeWhen */
-  function peachHealthActiveWhen(ctx: {
-    view: GameView;
-    perspectiveIdx: number;
-  }): boolean {
+  function peachHealthActiveWhen(ctx: { view: GameView; perspectiveIdx: number }): boolean {
     if (!defaultPlayActive(ctx)) return false;
     const p = ctx.view.players[ctx.perspectiveIdx];
     return p ? p.health < p.maxHealth : false;
@@ -2194,8 +2264,6 @@ describe('usePlayInteraction · confirm 型主动技直发(据守)', () => {
     );
     act(() => result.current.handleSkillAction(jushouAction()));
     // 直接发送 use action(confirm 型无额外参数),无中间确认状态
-    expect(sentCalls(send)).toEqual([
-      { skillId: '据守', actionType: 'use', params: {} },
-    ]);
+    expect(sentCalls(send)).toEqual([{ skillId: '据守', actionType: 'use', params: {} }]);
   });
 });

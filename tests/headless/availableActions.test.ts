@@ -252,7 +252,13 @@ const luanjiTransformAction: SkillActionDef = {
   prompt: {
     type: 'useCardAndTarget',
     title: '选择 2 张同花色的手牌当万箭齐发使用',
-    cardFilter: { filter: () => true, min: 2, max: 2 },
+    cardFilter: {
+      filter: () => true,
+      min: 2,
+      max: 2,
+      // 镜像引擎 skills/乱击.ts 的声明:同花色配对约束
+      comboFilter: (cards: Card[]) => cards[0]?.suit === cards[1]?.suit,
+    },
     targetFilter: { min: 0, max: 0 },
   },
   transform: (card: Card) => ({ name: '万箭齐发', sourceCardId: card.id, fromSkill: '乱击' }),
@@ -457,6 +463,39 @@ describe('enumerateAvailableActions', () => {
       { skillId: '乱击', actionType: 'transform', params: { cardIds: ['s1', 's2'] } },
     ]);
     expect(a.description).toContain('万箭齐发');
+  });
+
+  // 回归:组合约束(comboFilter)必须在枚举侧生效——乱击要求两张同花色,
+  // 旧实现按 C(n,2) 枚举全部组合 → 大量组合被引擎 validate 拒(「乱击需要两张同花色的手牌」),
+  // 而 AI 的 pickBestAction 是确定性的,反复挑中同一非法组合就永久空转。
+  it('乱击转化(多卡):只枚举同花色组合(comboFilter 生效)', () => {
+    const spade: Card = { id: 's1', name: '杀', suit: '♠', color: '黑', rank: '5', type: '基本牌' };
+    const heart: Card = { id: 'h1', name: '闪', suit: '♥', color: '红', rank: '7', type: '基本牌' };
+    const spade2: Card = {
+      id: 's2',
+      name: '桃',
+      suit: '♠',
+      color: '黑',
+      rank: '9',
+      type: '基本牌',
+    };
+    const view = makeView(0, '出牌', [spade, heart, spade2]);
+    const tf = enumerateAvailableActions(view, 0, [luanjiTransformAction]).filter(
+      (x) => x.category === 'transform',
+    );
+    // C(3,2)=3 组合中只有 ♠+♠ 一对合法
+    expect(tf).toHaveLength(1);
+    expect(tf[0].message.params.cardId).toBe('s1#s2#乱击');
+  });
+
+  it('丈八蛇矛转化(多卡):无 comboFilter 时任意两张都可(不受同花色限制)', () => {
+    const spade: Card = { id: 's1', name: '杀', suit: '♠', color: '黑', rank: '5', type: '基本牌' };
+    const heart: Card = { id: 'h1', name: '闪', suit: '♥', color: '红', rank: '7', type: '基本牌' };
+    const view = makeView(0, '出牌', [spade, heart]);
+    const tf = enumerateAvailableActions(view, 0, [zhangbaTransformAction]).filter(
+      (x) => x.category === 'transform',
+    );
+    expect(tf).toHaveLength(1);
   });
 
   // 回归:连环/界连环转化铁索连环。transform action 缺 transform 字段时,

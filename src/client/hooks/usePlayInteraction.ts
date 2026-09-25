@@ -75,6 +75,10 @@ export interface TransformMode {
   skillId: string;
   actionType: string;
   cardFilter: (c: Card) => boolean;
+  /** 多卡转化的组合约束(来自 prompt.cardFilter.comboFilter,如 乱击 两张同花色)。
+   *  单卡 filter 表达不了「两张牌之间」的约束;缺了它玩家能选中非法组合并提交,
+   *  引擎 validate 拒绝(点了没反应)。 */
+  comboFilter?: (cards: Card[]) => boolean;
   wrapperName: string;
   /** 选牌数量范围(来自 cardFilter.min/max),单卡转化=1..1 */
   minCards: number;
@@ -455,7 +459,7 @@ export function usePlayInteraction(
       if (!selectedCard) return undefined;
       return skillActions.find(
         (a) => a.actionType === 'use' && a.skillId === transformMode.wrapperName,
-    );
+      );
     }
     if (!selectedCard) return undefined;
     // altAction 覆盖:用户点了替代 use action(如断粮)后,用它而非默认匹配的主 use action。
@@ -514,9 +518,7 @@ export function usePlayInteraction(
       const min = rules.targetFilter?.min ?? 1;
       canPlay = selectedMultiTargets.length >= min;
       targetLabel =
-        selectedMultiTargets.length > 0
-          ? ` → ${selectedMultiTargets.join('、')}`
-          : ' (请选目标)';
+        selectedMultiTargets.length > 0 ? ` → ${selectedMultiTargets.join('、')}` : ' (请选目标)';
     } else {
       canPlay = !rules.needsTarget || !!selectedTarget;
       targetLabel = selectedTarget
@@ -537,9 +539,7 @@ export function usePlayInteraction(
       ? pending.prompt.targetFilter
       : null;
   const respondNeedsTarget =
-    isMyAwaiting &&
-    pending?.prompt?.type === 'useCardAndTarget' &&
-    !pending.prompt.selfTarget;
+    isMyAwaiting && pending?.prompt?.type === 'useCardAndTarget' && !pending.prompt.selfTarget;
   // respond 目标是否已满足:min<=1 时选了一个即可;max>1 时至少选 min 个。
   // 当前仅支持单目标路径(借刀杀人 targetFilter.max<=3 但默认选 1 即可);多目标累加
   // 复用 selectedMultiTargets 的场景极少(无现有 useCardAndTarget respond 需多选),暂不支持。
@@ -715,7 +715,11 @@ export function usePlayInteraction(
       if (pendingSkillAction) {
         const p = pendingSkillAction.action.prompt;
         const maxTargets =
-          p.type === 'selectTarget' ? (p.targetFilter.max ?? 1) : p.type === 'choosePlayer' ? (p.max ?? 1) : 1;
+          p.type === 'selectTarget'
+            ? (p.targetFilter.max ?? 1)
+            : p.type === 'choosePlayer'
+              ? (p.max ?? 1)
+              : 1;
         if (maxTargets <= 1) {
           submitSkillTarget(pendingSkillAction.action, name, pendingSkillAction.params);
           return;
@@ -822,9 +826,7 @@ export function usePlayInteraction(
       // 与出牌(选牌→选目标→出牌)同一交互范式。此前无目标直接 return,按钮点了没反应。
       if (prompt.type === 'selectTarget' || prompt.type === 'choosePlayer') {
         const maxTargets =
-          prompt.type === 'selectTarget'
-            ? (prompt.targetFilter.max ?? 1)
-            : (prompt.max ?? 1);
+          prompt.type === 'selectTarget' ? (prompt.targetFilter.max ?? 1) : (prompt.max ?? 1);
         if (!selectedTarget) {
           // 未选目标:进入选目标模式(座位环按 prompt 的 targetFilter/filter 高亮)
           setPendingSkillAction({ action, params });
@@ -848,13 +850,12 @@ export function usePlayInteraction(
             const maxCards = prompt.cardFilter.max ?? 1;
             const filter = prompt.cardFilter.filter;
             // wrapperName 由 transform 对一张代表性匹配牌求值(无匹配牌时用技能名兜底)
-            const sample = filter
-              ? perspectiveHand.find((c) => filter(c))
-              : perspectiveHand[0];
+            const sample = filter ? perspectiveHand.find((c) => filter(c)) : perspectiveHand[0];
             setTransformMode({
               skillId,
               actionType,
               cardFilter: filter ?? (() => true),
+              comboFilter: prompt.cardFilter.comboFilter,
               wrapperName: sample ? action.transform(sample).name : skillId,
               minCards,
               maxCards,
@@ -886,6 +887,7 @@ export function usePlayInteraction(
                 skillId,
                 actionType,
                 cardFilter: prompt.cardFilter.filter,
+                comboFilter: prompt.cardFilter.comboFilter,
                 wrapperName,
                 minCards,
                 maxCards,
@@ -937,6 +939,27 @@ export function usePlayInteraction(
     [selectedCardId, selectedTarget, nameToIndex, perspectiveHand, send, submitSkillTarget],
   );
 
+  /** 多卡转化的组合约束校验(乱击/界乱击:两张同花色)。
+   *  选中牌先查手牌,再查自己装备区(cardMap)——界父魂 的多卡转化原料含装备区。
+   *  缺 comboFilter 时恒真(丈八蛇矛/界父魂 任意两张)。 */
+  const transformComboOk = useCallback(
+    (ids: string[]): boolean => {
+      const filter = transformMode?.comboFilter;
+      if (!filter || ids.length === 0) return true;
+      const equipIds = new Set(Object.values(perspectiveEquipment).filter(Boolean));
+      const cards: Card[] = [];
+      for (const id of ids) {
+        const card =
+          perspectiveHand.find((c) => c.id === id) ??
+          (equipIds.has(id) ? view.cardMap[id] : undefined);
+        if (!card) return false;
+        cards.push(card);
+      }
+      return filter(cards);
+    },
+    [transformMode, perspectiveHand, perspectiveEquipment, view.cardMap],
+  );
+
   const handleTransformPlay = useCallback(
     (targetName: string) => {
       if (!transformMode) return;
@@ -947,19 +970,15 @@ export function usePlayInteraction(
           // 多卡转化(丈八蛇矛):2 张手牌当杀打出
           const ids = transformMode.selectedCardIds;
           if (ids.length < transformMode.minCards || ids.length > transformMode.maxCards) return;
+          if (!transformComboOk(ids)) return; // 组合约束(同花色)不满足 → 不提交
           const shadowCardId = `${ids.join('#')}#${transformMode.skillId}`;
-          send(
-            transformMode.wrapperName,
-            'respond',
-            { cardId: shadowCardId },
-            [
-              {
-                skillId: transformMode.skillId,
-                actionType: transformMode.actionType,
-                params: { cardIds: ids },
-              },
-            ],
-          );
+          send(transformMode.wrapperName, 'respond', { cardId: shadowCardId }, [
+            {
+              skillId: transformMode.skillId,
+              actionType: transformMode.actionType,
+              params: { cardIds: ids },
+            },
+          ]);
           setTransformMode(null);
           setSelectedCardId(null);
           setSelectedTarget(null);
@@ -969,18 +988,13 @@ export function usePlayInteraction(
         const targetCard = perspectiveHand.find((c) => c.id === selectedCardId);
         if (!targetCard) return;
         const shadowCardId = `${selectedCardId}#${transformMode.skillId}`;
-        send(
-          transformMode.wrapperName,
-          'respond',
-          { cardId: shadowCardId },
-          [
-            {
-              skillId: transformMode.skillId,
-              actionType: transformMode.actionType,
-              params: { cardId: selectedCardId },
-            },
-          ],
-        );
+        send(transformMode.wrapperName, 'respond', { cardId: shadowCardId }, [
+          {
+            skillId: transformMode.skillId,
+            actionType: transformMode.actionType,
+            params: { cardId: selectedCardId },
+          },
+        ]);
         setTransformMode(null);
         setSelectedCardId(null);
         setSelectedTarget(null);
@@ -994,6 +1008,7 @@ export function usePlayInteraction(
       if (transformMode.minCards > 1) {
         const ids = transformMode.selectedCardIds;
         if (ids.length < transformMode.minCards || ids.length > transformMode.maxCards) return;
+        if (!transformComboOk(ids)) return; // 组合约束(同花色)不满足 → 不提交
         const shadowCardId = `${ids.join('#')}#${transformMode.skillId}`;
         const mainParams: Record<string, Json> = { cardId: shadowCardId };
         if (needsTarget) mainParams.targets = [idx];
@@ -1025,6 +1040,7 @@ export function usePlayInteraction(
     },
     [
       transformMode,
+      transformComboOk,
       isRespondTransformContext,
       pendingRequestedName,
       nameToIndex,
@@ -1126,8 +1142,8 @@ export function usePlayInteraction(
       // 回应窗口
       if (isMyAwaiting) {
         // 转化回应路径(询问杀/闪/无懈)的拦截由上方 `if (transformMode) return` 承担:
-      // 只有已进入转化选牌模式时双击才让位;字面可回应牌(如询问闪手中的闪)双击仍应直接打出,
-      // 非匹配牌由下方 cardFilter 拦截。
+        // 只有已进入转化选牌模式时双击才让位;字面可回应牌(如询问闪手中的闪)双击仍应直接打出,
+        // 非匹配牌由下方 cardFilter 拦截。
         if (!pendingRespondInfo?.cardFilter?.(card)) return;
         if (respondNeedsTarget) {
           setSelectedRespondCardId(card.id);
@@ -1151,15 +1167,7 @@ export function usePlayInteraction(
         setSelectedTarget(null);
         return;
       }
-      const params = buildPlayParams(
-        view.players,
-        perspectiveIdx,
-        card,
-        rules,
-        null,
-        null,
-        [],
-      );
+      const params = buildPlayParams(view.players, perspectiveIdx, card, rules, null, null, []);
       if (!params) return;
       const cardEl = handListRef.current?.querySelector(
         `[data-card-id="${card.id}"]`,
@@ -1214,11 +1222,7 @@ export function usePlayInteraction(
             (prev) =>
               prev && {
                 ...prev,
-                selectedCardIds: toggleOrderedFifo(
-                  prev.selectedCardIds,
-                  card.id,
-                  prev.maxCards,
-                ),
+                selectedCardIds: toggleOrderedFifo(prev.selectedCardIds, card.id, prev.maxCards),
               },
           );
           setSelectedTarget(null);
@@ -1278,38 +1282,70 @@ export function usePlayInteraction(
     const skillId = pendingRespondInfo?.skillId ?? '系统规则';
     send(skillId, 'respond', { cardIds });
     setSelectedForDiscard([]);
-  }, [pending, isDiscardPhase, selectedForDiscard, discardMin, discardMax, send, pendingRespondInfo]);
+  }, [
+    pending,
+    isDiscardPhase,
+    selectedForDiscard,
+    discardMin,
+    discardMax,
+    send,
+    pendingRespondInfo,
+  ]);
 
   // ─── 多选快捷:全选 / 反选(弃牌阶段 + 多卡转化) ───
   // 弃牌阶段候选=整手牌;转化候选=cardFilter 命中的牌。两者均受各自 max 截断。
   const handleDiscardSelectAll = useCallback(() => {
-    setSelectedForDiscard(selectAllOrdered(perspectiveHand.map((c) => c.id), discardMax));
+    setSelectedForDiscard(
+      selectAllOrdered(
+        perspectiveHand.map((c) => c.id),
+        discardMax,
+      ),
+    );
   }, [perspectiveHand, discardMax]);
 
   const handleDiscardInvert = useCallback(() => {
     setSelectedForDiscard((prev) =>
-      invertOrdered(perspectiveHand.map((c) => c.id), prev, discardMax),
+      invertOrdered(
+        perspectiveHand.map((c) => c.id),
+        prev,
+        discardMax,
+      ),
     );
   }, [perspectiveHand, discardMax]);
 
   const handleTransformSelectAll = useCallback(() => {
-    setTransformMode(
-      (prev) =>
-        prev && {
-          ...prev,
-          selectedCardIds: selectAllOrdered(
-            perspectiveHand.filter(prev.cardFilter).map((c) => c.id),
-            prev.maxCards,
-          ),
-        },
-    );
+    setTransformMode((prev) => {
+      if (!prev) return prev;
+      const candidates = perspectiveHand.filter(prev.cardFilter);
+      // 有组合约束(乱击:两张同花色)时选出一组**满足约束**的组合,
+      // 否则「全选」会选中前 maxCards 张(可能不同花色)→ 提交被拦。
+      if (prev.comboFilter) {
+        for (let i = 0; i < candidates.length; i++) {
+          for (let j = i + 1; j < candidates.length; j++) {
+            if (prev.comboFilter([candidates[i], candidates[j]])) {
+              return { ...prev, selectedCardIds: [candidates[i].id, candidates[j].id] };
+            }
+          }
+        }
+      }
+      return {
+        ...prev,
+        selectedCardIds: selectAllOrdered(
+          candidates.map((c) => c.id),
+          prev.maxCards,
+        ),
+      };
+    });
   }, [perspectiveHand]);
 
   const handleTransformInvert = useCallback(() => {
     setTransformMode((prev) => {
       if (!prev) return prev;
       const candidates = perspectiveHand.filter(prev.cardFilter).map((c) => c.id);
-      return { ...prev, selectedCardIds: invertOrdered(candidates, prev.selectedCardIds, prev.maxCards) };
+      return {
+        ...prev,
+        selectedCardIds: invertOrdered(candidates, prev.selectedCardIds, prev.maxCards),
+      };
     });
   }, [perspectiveHand]);
 
@@ -1344,9 +1380,7 @@ export function usePlayInteraction(
   const handleDistInvert = useCallback(() => {
     if (!activeDistribute) return;
     const maxTotal = activeDistribute.prompt.maxTotal ?? 99;
-    setDistSelected(
-      new Set(invertOrdered(activeDistribute.cardIds, [...distSelected], maxTotal)),
-    );
+    setDistSelected(new Set(invertOrdered(activeDistribute.cardIds, [...distSelected], maxTotal)));
   }, [activeDistribute, distSelected]);
 
   const handleDistAllocate = useCallback(
@@ -1412,16 +1446,18 @@ export function usePlayInteraction(
   // 转化:多卡(minCards>1)按选中数;单卡按 selectedCardId。回应路径(被询问杀)无需目标。
   const transformSubmit = (() => {
     if (!transformMode || isDistributeActive) return null;
-    const ids = transformMode.minCards > 1
-      ? transformMode.selectedCardIds
-      : selectedCardId
-        ? [selectedCardId]
-        : [];
+    const ids =
+      transformMode.minCards > 1
+        ? transformMode.selectedCardIds
+        : selectedCardId
+          ? [selectedCardId]
+          : [];
     const enough = ids.length >= transformMode.minCards && ids.length <= transformMode.maxCards;
+    const comboOk = transformComboOk(ids);
     const needsTarget =
       !isRespondTransformContext &&
       (transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true);
-    const canSubmit = enough && (!needsTarget || !!selectedTarget);
+    const canSubmit = enough && comboOk && (!needsTarget || !!selectedTarget);
     return { needsTarget, canSubmit };
   })();
 
@@ -1440,9 +1476,7 @@ export function usePlayInteraction(
     if (activeDistribute.externalTargetSelection) {
       return {
         canSubmit:
-          distSelected.size >= minTotal &&
-          distSelected.size <= maxTotal &&
-          !!distTargetName,
+          distSelected.size >= minTotal && distSelected.size <= maxTotal && !!distTargetName,
         label: `确定(${distSelected.size})${distTargetName ? ` → ${distTargetName}` : ''}`,
       };
     }

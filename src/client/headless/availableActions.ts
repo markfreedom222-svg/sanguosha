@@ -2,6 +2,7 @@
 // 枚举当前座次可执行操作。纯函数，零副作用。
 // 复用 gameViewHelpers 的 isActiveAction / findUseActionForCard / derivePlayRules / buildPlayParams。
 import type {
+  Card,
   GameView,
   ActionContext,
   ClientMessage as EngineClientMessage,
@@ -174,6 +175,11 @@ function enumerateTransformActions(
       // (回归 yrjQ7X:旧实现只生成 params={} 的描述性 action + 空 validTargets,
       //  agent 无法构造合法 preceding/影子 cardId → 丈八蛇矛完全不可用。)
       const matchingCards = me.hand.filter(filter);
+      // 组合约束(乱击/界乱击:两张牌同花色)。单卡 filter 表达不了「两张牌之间」的约束,
+      // 缺了它客户端会枚举出引擎必拒的组合 —— AI 的 pickBestAction 是确定性的,
+      // 反复挑中同一非法组合就永久空转(扫描实测 378 个组合里大量被拒)。
+      const comboFilter = cardFilter.comboFilter;
+      const combosOk = (c1: Card, c2: Card): boolean => !comboFilter || comboFilter([c1, c2]);
 
       // 回应路径(被询问杀 / 请求回应 杀/respondKill):两张牌当【杀】打出,无目标,
       // 主 action = 杀.respond。与单卡分支同构——旧实现整段缺少回应路径,多卡分支
@@ -185,6 +191,7 @@ function enumerateTransformActions(
           for (let j = i + 1; j < matchingCards.length; j++) {
             const c1 = matchingCards[i];
             const c2 = matchingCards[j];
+            if (!combosOk(c1, c2)) continue;
             const wrapperName = action.transform!(c1).name;
             if (wrapperName !== pendingRequestedName) continue; // 产出牌名 = 请求牌名时可用
             const shadowCardId = `${c1.id}#${c2.id}#${action.skillId}`;
@@ -230,6 +237,7 @@ function enumerateTransformActions(
         for (let j = i + 1; j < matchingCards.length; j++) {
           const c1 = matchingCards[i];
           const c2 = matchingCards[j];
+          if (!combosOk(c1, c2)) continue;
           const shadowCardId = `${c1.id}#${c2.id}#${action.skillId}`;
           const desc = `${c1.suit}${c1.rank}+${c2.suit}${c2.rank}`;
           result.push({

@@ -34,6 +34,12 @@ export type ActionPrompt =
 
 export interface CardFilter {
   filter?: (card: Card) => boolean;
+  /** 多卡转化的组合约束(仅多卡 transform 生效):如 乱击/界乱击 要求两张牌同花色。
+   *  单卡 filter 无法表达「两张牌之间」的约束,故单独声明;与 filter 同为本地函数
+   *  (跨进程序列化时丢失,由引擎 validate 兜底)。
+   *  无头枚举(availableActions)据此过滤组合,浏览器据此禁止提交非法组合——
+   *  否则客户端会枚举/提交出引擎必拒的动作(AI 反复挑中同一非法组合 → 空转)。 */
+  comboFilter?: (cards: Card[]) => boolean;
   /** 可序列化的合法手牌 id 列表(权威,跨进程);filter 为本地冗余,序列化时丢失。
    *  投影层(toViewEvents/buildView)对未显式提供的 prompt 自动跑 filter 计算。
    *  与 ChoosePlayerPrompt.candidates 同构——前端据此重建 cardFilter(成员判断),

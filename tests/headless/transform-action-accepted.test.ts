@@ -286,3 +286,39 @@ describe('多卡转化技回应路径:客户端枚举 → 引擎 dispatch', () =
     expect(res.accepted, '客户端枚举的丈八蛇矛代杀回应必须被引擎接受').toBe(true);
   });
 });
+
+// ─── 多卡转化的组合约束:客户端枚举出的每个组合都必须被引擎接受 ───
+// 乱击/界乱击 要求两张同花色;comboFilter 缺位时客户端按 C(n,2) 枚举全部组合,
+// 非同行色的组合提交即被拒(AI 的 pickBestAction 确定性 → 反复挑中同一非法组合空转)。
+describe('多卡转化组合约束:枚举出的每个组合都可被引擎接受', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it.each(['乱击', '界乱击'])('%s:混花色手牌 → 枚举出的组合全部同花色且被接受', async (skillId) => {
+    const spade = mkCard('s1', '杀', '♠', '5');
+    const heart = mkCard('h1', '闪', '♥', '7');
+    const spade2 = mkCard('s2', '桃', '♠', '9');
+    const { state, actions } = await enumerateTransforms({
+      players: [
+        mkPlayer(0, 'P0', ['s1', 'h1', 's2'], [skillId, '杀', '回合管理']),
+        mkPlayer(1, 'P1', [], []),
+      ],
+      cardMap: { s1: spade, h1: heart, s2: spade2 },
+      seat: 0,
+    });
+
+    const transforms = actions.filter((a) => a.category === 'transform');
+    expect(transforms, '客户端应枚举出同花色组合').toHaveLength(1);
+    const cardIds = (transforms[0].message.preceding![0].params as { cardIds: string[] }).cardIds;
+    expect(new Set(cardIds)).toEqual(new Set(['s1', 's2']));
+
+    const res = await dispatch(state, {
+      ...transforms[0].message,
+      params: { ...transforms[0].message.params },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(res.accepted, `${skillId} 枚举出的同花色组合必须被引擎接受`).toBe(true);
+  });
+});

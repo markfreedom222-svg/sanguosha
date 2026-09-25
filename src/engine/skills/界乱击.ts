@@ -52,8 +52,7 @@ export function createSkill(id: string, ownerId: number): Skill {
     id,
     ownerId,
     name: DISPLAY_NAME,
-    description:
-      '你可以将两张花色相同的手牌当【万箭齐发】使用;你使用【万箭齐发】可以少选一个目标',
+    description: '你可以将两张花色相同的手牌当【万箭齐发】使用;你使用【万箭齐发】可以少选一个目标',
   };
 }
 
@@ -89,8 +88,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
       const cardsExist = !!c1 && !!c2;
       // 乱击核心条件:两张牌花色相同(同花色,suit 严格相等)
       const sameSuit = !!c1 && !!c2 && c1.suit !== '' && c1.suit === c2.suit;
-      const ok =
-        myTurn && inActPhase && free && selfAlive && cardInHand && cardsExist && sameSuit;
+      const ok = myTurn && inActPhase && free && selfAlive && cardInHand && cardsExist && sameSuit;
       return ok ? null : '界乱击需要两张同花色的手牌';
     },
     async (state: GameState, params: Record<string, Json>) => {
@@ -230,8 +228,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
       const target =
         (params.target as number | undefined) ??
         (Array.isArray(params.targets) ? (params.targets as number[])[0] : undefined);
-      state.localVars[SKIP_TARGET_KEY] =
-        typeof target === 'number' ? target : null;
+      state.localVars[SKIP_TARGET_KEY] = typeof target === 'number' ? target : null;
     },
   );
 
@@ -251,7 +248,13 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       // 无需选目标,targetFilter max=0 表示不强制选目标(直接提交)。
       type: 'useCardAndTarget',
       title: '选择 2 张同花色的手牌当万箭齐发使用(界版:可少选一个目标)',
-      cardFilter: { filter: () => true, min: 2, max: 2 },
+      cardFilter: {
+        filter: () => true,
+        min: 2,
+        max: 2,
+        // 同花色配对约束(与后端 validate 同源):无头枚举/浏览器据此过滤组合
+        comboFilter: (cards: Card[]) => cards[0]?.suit === cards[1]?.suit,
+      },
       targetFilter: { min: 0, max: 0 },
     },
     transform: (card: Card) => ({
