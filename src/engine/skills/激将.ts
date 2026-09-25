@@ -15,8 +15,8 @@
 //   - 代使用(requestType==='激将/出杀', 蜀角色 seat):主动激将时,蜀角色选杀+
 //     指定 killTarget,use execute 读 localVars['激将/出杀选择'] → runUseFlow(none)
 //     走完整杀结算,damageType 由 cardMap 自动传导(火杀/雷杀不丢)。
-import type { GameState, FrontendAPI, Json, Skill } from '../types';
-import { applyAtom } from '../core/apply'
+import type { GameState, FrontendAPI, GameView, Json, Skill } from '../types';
+import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame, frameCards } from '../core/frame';
 import { runUseFlow } from './cards/use-card';
 import { registerAction, hasBlockingPending, declareAlternativeResponse } from '../core/skill';
@@ -32,8 +32,7 @@ export function createSkill(id: string, ownerId: number): Skill {
     id,
     ownerId,
     name: '激将',
-    description:
-      '主公技,其他蜀势力角色可以在你需要时代替你使用或打出【杀】(视为由你使用或打出)',
+    description: '主公技,其他蜀势力角色可以在你需要时代替你使用或打出【杀】(视为由你使用或打出)',
   };
 }
 
@@ -93,7 +92,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
 
       // 请求回应:蜀角色选一张杀 + 指定目标(固定=killTarget),经 激将/出杀 respond
       const killTargetName =
-        typeof killTarget === 'number' ? state.players[killTarget]?.name ?? '?' : '?';
+        typeof killTarget === 'number' ? (state.players[killTarget]?.name ?? '?') : '?';
       await applyAtom(state, {
         type: '请求回应',
         requestType: REQUEST_TYPE,
@@ -159,11 +158,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
             if (seat !== 0) return '仅主公可用';
             // 必须有其他蜀势力存活角色(有手牌)
             const hasShuAllies = st.players.some(
-              (p) =>
-                p.alive &&
-                p.index !== seat &&
-                p.faction === '蜀' &&
-                p.hand.length > 0,
+              (p) => p.alive && p.index !== seat && p.faction === '蜀' && p.hand.length > 0,
             );
             if (!hasShuAllies) return '没有可出杀的蜀势力角色';
             return null;
@@ -249,7 +244,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
   };
 }
 
-export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
+export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
   // use:主动激将(出牌阶段选择蜀角色)
   api.defineAction('use', {
     label: '激将',
@@ -259,6 +254,10 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
       title: '激将:选择一名蜀势力角色出杀',
       min: 1,
       max: 1,
+      // 其他蜀势力角色(与后端 validate 同源):缺 filter 时无头枚举退化为全体存活角色
+      // (含自己与非蜀)→ 提交恒拒「现在不能使用激将」。
+      filter: (view: GameView, t: number) =>
+        t !== skill.ownerId && view.players[t]?.alive === true && view.players[t]?.faction === '蜀',
     },
   });
   // respond:响应型激将(被询问杀时激活)

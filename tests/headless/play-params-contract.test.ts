@@ -37,7 +37,13 @@ function mkCard(
   return { id, name, suit, color: suitColor(suit), rank, type };
 }
 
-function mkPlayer(index: number, name: string, hand: string[], skills: string[]): PlayerState {
+function mkPlayer(
+  index: number,
+  name: string,
+  hand: string[],
+  skills: string[],
+  faction: PlayerState['faction'] = '群',
+): PlayerState {
   return {
     index,
     name,
@@ -53,7 +59,7 @@ function mkPlayer(index: number, name: string, hand: string[], skills: string[])
     pendingTricks: [],
     tags: [],
     judgeZone: [],
-    faction: '群',
+    faction,
   };
 }
 
@@ -289,5 +295,90 @@ describe('客户端构造的回应 params 必须被引擎接受', () => {
       baseSeq: state.seq,
     });
     expect(res.accepted, '界火计的延时锦囊代价牌(单数 target)必须被引擎接受').toBe(true);
+  });
+});
+
+// ─── 枚举侧过滤缺失:客户端枚举出的目标必须被引擎接受 ───
+// 目标合法性由引擎 validate 权威判定(inAttackRange / 势力 / 非自己…),客户端
+// targetFilter 是同一判据的投影;filter 写成占位 return true(或漏写)时,枚举出的
+// 目标提交即被拒 —— 玩家点了没反应,AI 反复挑中同一非法目标空转。
+describe('客户端枚举的目标必须被引擎接受', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  /** 建局 + 枚举指定技能的客户端 action;build() 每次给全新 state(dispatch 会改 state)。 */
+  async function enumerateSkillActions(
+    skillId: string,
+    setup: () => { players: PlayerState[]; cardMap: Record<string, Card> },
+  ) {
+    const build = async () => {
+      const { players, cardMap } = setup();
+      const state: GameState = createGameState({
+        players,
+        cardMap,
+        currentPlayerIndex: 0,
+        phase: '出牌',
+        turn: { round: 1, phase: '出牌', vars: {} },
+      });
+      state.zones = { deck: [], discardPile: [], processing: [] };
+      await registerSkillsFromState(state);
+      clearRegistry();
+      for (const p of state.players) await registerSkillActions(p.index, p.skills);
+      return state;
+    };
+    const state = await build();
+    const actions = enumerateAvailableActions(
+      buildView(state, 0),
+      0,
+      getActionsForPlayer(0),
+    ).filter((a) => a.message.skillId === skillId);
+    return { build, actions };
+  }
+
+  // 4 人圆桌:距离(P2→P0)=2 > 攻击范围 1 → P2 无法用杀攻击到 P0;P1/P3 距离 1 可以。
+  // 客户端 filter 旧实现是占位 `return true` → 把 P2 也枚举成合法目标,引擎 validate
+  // 恒拒「目标无法用杀攻击到你」。
+  it.each(['挑衅', '界挑衅'])('%s:超出目标攻击范围的角色不得被枚举', async (skillId) => {
+    const setup = () => ({
+      players: [
+        mkPlayer(0, 'P0', ['k1'], [skillId, '杀', '回合管理']),
+        mkPlayer(1, 'P1', [], ['回合管理']),
+        mkPlayer(2, 'P2', [], ['回合管理']),
+        mkPlayer(3, 'P3', [], ['回合管理']),
+      ],
+      cardMap: { k1: mkCard('k1', '杀', '♠', '5') },
+    });
+    const { build, actions } = await enumerateSkillActions(skillId, setup);
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.map((a) => a.message.params.target).sort()).toEqual([1, 3]);
+
+    for (const a of actions) {
+      const state = await build();
+      const res = await dispatch(state, { ...a.message, ownerId: 0, baseSeq: state.seq });
+      expect(res.accepted, `${skillId} 目标 ${String(a.message.params.target)} 应被接受`).toBe(
+        true,
+      );
+    }
+  });
+
+  // 激将/界激将:主公技,令**其他蜀势力**角色代为使用杀。客户端 choosePlayer 未声明
+  // filter → 无头枚举退化为全体存活角色(含自己与非蜀)→ 引擎 validate 恒拒
+  // 「现在不能使用激将」;浏览器按钮同样让主公能点到自己/非蜀角色。
+  it.each(['激将', '界激将'])('%s:只枚举其他蜀势力角色', async (skillId) => {
+    const setup = () => ({
+      players: [
+        mkPlayer(0, 'P0', [], [skillId, '杀', '回合管理'], '蜀'),
+        mkPlayer(1, 'P1', ['x1'], ['杀', '回合管理'], '蜀'),
+        mkPlayer(2, 'P2', [], ['回合管理'], '魏'),
+      ],
+      cardMap: { x1: mkCard('x1', '杀', '♣', '3') },
+    });
+    const { build, actions } = await enumerateSkillActions(skillId, setup);
+    expect(actions.map((a) => a.message.params.target)).toEqual([1]);
+
+    const state = await build();
+    const res = await dispatch(state, { ...actions[0].message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, `${skillId} 枚举出的蜀势力目标应被接受`).toBe(true);
   });
 });

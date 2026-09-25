@@ -18,12 +18,13 @@
 // 命名:文件名/loader key/character skill name 均为 '界挑衅'(避开标挑衅冲突);
 //   内部 Skill.name = '挑衅'(OL 官方技能名,玩家可见)。
 import type { FrontendAPI, GameState, Json, Skill } from '../types';
-import { applyAtom } from '../core/apply'
+import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame } from '../core/frame';
 import { runUseFlow } from './cards/use-card';
 import { defaultPlayActive } from '../rules/action-active';
 import { registerAction, hasBlockingPending } from '../core/skill';
 import { inAttackRange } from '../rules/distance';
+import { viewCanAttack } from '../rules/viewDistance';
 import type { SkillModule } from '../types';
 
 const SKILL_ID = '界挑衅';
@@ -118,7 +119,7 @@ async function pickAndDiscard(state: GameState, picker: number, victim: number):
   const zone = result?.zone ?? fallback.zone;
   let discardId: string | undefined;
   if (zone === 'equipment') {
-    discardId = (result?.cardId ?? fallback.cardId) ?? undefined;
+    discardId = result?.cardId ?? fallback.cardId ?? undefined;
   } else {
     // 手牌盲选
     const idx = result?.handIndex ?? 0;
@@ -269,7 +270,8 @@ export function onInit(skill: Skill, state: GameState): () => void {
             }
             if (zone === 'hand') {
               if (typeof params.handIndex !== 'number') return 'handIndex required';
-              if (params.handIndex < 0 || params.handIndex >= vp.hand.length) return 'handIndex 越界';
+              if (params.handIndex < 0 || params.handIndex >= vp.hand.length)
+                return 'handIndex 越界';
               return null;
             }
             return 'zone required (equipment|hand)';
@@ -313,13 +315,15 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
       targetFilter: {
         min: 1,
         max: 1,
-        // 攻击范围检查:目标能用杀攻击到我(前端 UI 提示用,后端 validate 独立校验)
+        // 攻击范围检查:目标能用杀攻击到我 —— 与后端 inAttackRange 同源的 view 侧判据。
+        // 旧实现是占位 `return true` → 枚举出打不到我的角色,提交被引擎 validate 拒
+        // (玩家点了没反应 / AI 反复挑中同一非法目标空转)。
         filter: (view, t) => {
           const me = view.currentPlayerIndex;
           if (t === me) return false;
           const tp = view.players[t];
           if (!tp || tp.alive === false) return false;
-          return true;
+          return viewCanAttack(view.players, view.cardMap, t, me);
         },
       },
     },

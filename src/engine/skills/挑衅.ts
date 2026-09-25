@@ -17,18 +17,19 @@
 //        写 player.vars['挑衅/usedThisTurn']
 //   距离:inAttackRange(state, 目标, 姜维)—— 目标的杀能攻击到姜维
 import type { FrontendAPI, GameState, Json, Skill } from '../types';
-import { applyAtom } from '../core/apply'
+import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame } from '../core/frame';
 import { runUseFlow } from './cards/use-card';
 import { usedThisTurn, markOncePerTurn, activeUnlessUsedThisTurn } from '../rules/once-per-turn';
 import { registerAction, hasBlockingPending } from '../core/skill';
 import { inAttackRange } from '../rules/distance';
+import { viewCanAttack } from '../rules/viewDistance';
 
 // localVars 键 / requestType 常量(对齐 乱武/借刀杀人 风格)
-const REQUEST_TYPE = '挑衅/出杀';      // 出杀询问的 requestType
-const CHOICE_VAR = '挑衅/出杀选择';     // 出杀选择写入的 localVars key
+const REQUEST_TYPE = '挑衅/出杀'; // 出杀询问的 requestType
+const CHOICE_VAR = '挑衅/出杀选择'; // 出杀选择写入的 localVars key
 const PICK_REQUEST_TYPE = '挑衅/选牌'; // 选牌询问的 requestType
-const PICK_VAR = '挑衅/选牌';          // 选牌结果写入的 localVars key(与 requestType 同名)
+const PICK_VAR = '挑衅/选牌'; // 选牌结果写入的 localVars key(与 requestType 同名)
 const DISCARD_TARGET_VAR = '挑衅/弃牌目标';
 
 export function createSkill(id: string, ownerId: number): Skill {
@@ -99,7 +100,7 @@ async function pickAndDiscard(state: GameState, picker: number, victim: number):
   const zone = result?.zone ?? fallback.zone;
   let discardId: string | undefined;
   if (zone === 'equipment') {
-    discardId = (result?.cardId ?? fallback.cardId) ?? undefined;
+    discardId = result?.cardId ?? fallback.cardId ?? undefined;
   } else {
     // 手牌盲选
     const idx = result?.handIndex ?? 0;
@@ -232,8 +233,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
               )?.prompt?.equipment;
               if (promptEquip && !promptEquip.some((e) => e.cardId === params.cardId))
                 return '该装备不可选';
-              if (!Object.values(vp.equipment).includes(params.cardId))
-                return '该牌不在目标装备区';
+              if (!Object.values(vp.equipment).includes(params.cardId)) return '该牌不在目标装备区';
               return null;
             }
             if (zone === 'hand') {
@@ -249,9 +249,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
         },
         async (st: GameState, params: Record<string, Json>) => {
           const slot = st.pendingSlots.get(seat);
-          const requestType = (
-            slot?.atom as { requestType?: string } | undefined
-          )?.requestType;
+          const requestType = (slot?.atom as { requestType?: string } | undefined)?.requestType;
           if (requestType === REQUEST_TYPE) {
             // 与 validate 同构:前端 targets 数组优先,兼容单数 target
             const rawTarget = Array.isArray(params.targets)
@@ -289,14 +287,15 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       targetFilter: {
         min: 1,
         max: 1,
-        // 攻击范围检查:目标能用杀攻击到我(前端 UI 提示用,后端 validate 独立校验)
+        // 攻击范围检查:目标能用杀攻击到我 —— 与后端 inAttackRange 同源的 view 侧判据。
+        // 旧实现是占位 `return true` → 枚举出打不到我的角色,提交被引擎 validate 拒
+        // (玩家点了没反应 / AI 反复挑中同一非法目标空转)。
         filter: (view, t) => {
           const me = view.currentPlayerIndex;
           if (t === me) return false;
           const tp = view.players[t];
           if (!tp || tp.alive === false) return false;
-          // 复用前端可见距离推断(近似后端 inAttackRange)
-          return true;
+          return viewCanAttack(view.players, view.cardMap, t, me);
         },
       },
     },
