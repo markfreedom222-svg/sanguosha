@@ -260,6 +260,31 @@ vars['unlimitedKills']  // 应改为 '诸葛连弩/active'
   `hand`/`marks`，任一 reject 路径回滚后按快照还原（内容 + 顺序）。手牌/标记顺序是客户端
   可见状态（UI 排列 + `pickTargetCard` 盲选的 `handIndex` 按位置取值），技能各自的 rollback
   回调把原牌 push 回末尾会让在线客户端与权威 `buildView` 顺序错位、玩家选到的牌不是点击的那张。
+- **客户端枚举的每个动作/目标都必须能被引擎接受**（最高频 bug 类：引擎支持但客户端发不出/发了被拒）：
+  - 目标合法性由引擎 validate 权威判定，客户端 `targetFilter`/`choosePlayer.filter` 是**同一判据的投影**。
+    写成占位 `return true` 或漏写 → 枚举出必拒目标（挑衅 范围、激将 势力，玩家点了没反应 / AI 确定性
+    挑选反复撞同一非法目标空转）。距离族用 `viewCanAttack`（与后端 `inAttackRange` 同源）。
+  - 替代出法（`enumerateAltActions`）与转化技一样要按自身 prompt 派生目标（义绝 弃牌+选目标）。
+  - 多卡转化的组合约束用 `CardFilter.comboFilter` 声明（乱击/界乱击 两张同花色）——单卡 filter
+    表达不了「两张牌之间」的约束；无头枚举据此过滤组合、浏览器据此拦提交。
+  - 客户端声明的参数取值必须与引擎 validate 同源（`paramVariants` 的 cost：界强袭是 `'damage'`
+    不是标版的 `'hp'`）。
+- **目标形状归一（dispatch 边界）**：客户端对目标有两种 wire 形状——普通牌/技能代价牌发
+  `targets:[idx]`，延时锦囊发 `target:idx`（`buildPlayParams`）；回应 `useCardAndTarget` 型 pending
+  固定发 `targets`（`handleRespond`）。`使用牌` skill 自带 target→targets 兼容，但**自带
+  use/respond action 的技能拿不到它**，故 `dispatch` 入口统一补齐两种形状（缺哪种补哪种，已有值
+  不覆盖；单数只取 `targets[0]`）。新技能读 `params.target` 或 `params.targets` 都可。
+- **转化技的方向与目标语义由「产出牌」决定，不由 transform action 自身声明决定**：
+  - 产出牌名由 `action.transform(当前选中的牌).name` 求值——浏览器 `transformWrapperName`
+    必须跟随选牌（进入模式时的样本名只是占位），否则多向转化技（龙胆 杀↔闪、界龙胆 四向）的
+    方向被手牌顺序钉死：主 action 不存在（按钮消失）或方向不符（引擎拒）。
+  - 目标语义取**产出牌自己的 use action**（`findUseActionForCard` 按产出牌名查）：酒（无目标）、
+    桃（selfTarget，提交 `targets:[自己]`）、杀（攻击范围）；沿用 transform 自己的 targetFilter
+    会把「对他人」的目标塞给 桃/酒 → 恒拒。产出牌此刻不可用（闪/无懈无主动 use 入口、桃需已受伤）
+    则不该枚举/渲染（`hasUseEntry` + 产出 action 的 `activeWhen`）。
+- **声明型转化技把「声明」编码进 actionType**：界渐营/界矫诏 需要玩家声明牌名（outputName），
+  客户端无法凭空提供 → 每个声明牌名注册一个 action（`transform:杀` / `transform:无中生有`…），
+  `transform` 回调固定返回该牌名。新增同类技能照此办理，勿再依赖「前端声明面板」这类未实现的 UI。
 
 ## 测试
 
