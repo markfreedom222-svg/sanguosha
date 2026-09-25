@@ -31,6 +31,9 @@ All notable changes to this project will be documented in this file.
   (酒无目标 / 桃 selfTarget),产出牌不可用则不枚举。
 - **界渐营/界矫诏 声明型转化**:`outputName` 无任何客户端提供 → 每个声明牌名一个 action
   (`transform:杀`…),`transform` 回调固定返回该牌名,前后端一一对应。
+- **变体代价牌(强袭/界强袭 弃武器)**:变体只声明 `cost:'discard'`,没有任何客户端提供
+  `cardId` → `paramVariants` 变体可声明 `cardFilter`,浏览器取「选中手牌 / 自己装备区武器」、
+  无头枚举按「每个候选牌 × 每个目标」展开预填。
 
 #### 测试
 
