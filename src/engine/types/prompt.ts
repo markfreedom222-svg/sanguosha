@@ -81,7 +81,14 @@ export interface SelectTargetPrompt {
    *  数据驱动:枚举层(无头客户端/AI)为「每个变体 × 每个合法目标」生成一个 action,
    *  避免客户端提交缺参被 validate 拒(强袭此前只有 target → 永远被拒)。
    *  缺省 = 无额外参数。 */
-  paramVariants?: Array<{ label: string; params: Record<string, Json> }>;
+  paramVariants?: Array<{
+    label: string;
+    params: Record<string, Json>;
+    /** 该变体额外需要一张满足此过滤的牌(如强袭·弃武器需要一张武器牌),提交时写入
+     *  `params.cardId`:浏览器取当前选中的手牌、否则自己的装备区武器;无头枚举按
+     *  「每个候选牌 × 每个合法目标」展开。缺省 = 不需要牌。 */
+    cardFilter?: (card: Card) => boolean;
+  }>;
 }
 export interface UseCardAndTargetPrompt {
   type: 'useCardAndTarget';

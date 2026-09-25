@@ -413,7 +413,14 @@ describe('GameView:武圣回应(打出)路径', () => {
   });
 
   it('被询问杀时:武圣按钮出现 → 选红牌 → 提交 杀.respond + preceding', async () => {
-    const redDodge: Card = { id: 'c1', name: '闪', suit: '♥', color: '红', rank: 'A', type: '基本牌' };
+    const redDodge: Card = {
+      id: 'c1',
+      name: '闪',
+      suit: '♥',
+      color: '红',
+      rank: 'A',
+      type: '基本牌',
+    };
     const view: GameView = {
       viewer: 0,
       currentPlayerIndex: 1,
@@ -421,20 +428,39 @@ describe('GameView:武圣回应(打出)路径', () => {
       turn: { round: 1, phase: '出牌', vars: {} },
       players: [
         {
-          index: 0, name: '关羽', character: '关羽', health: 4, maxHealth: 4, alive: true,
-          equipment: {}, skills: ['使用牌', '打出牌', '武圣'],
-          handCount: 1, hand: [redDodge], marks: [],
+          index: 0,
+          name: '关羽',
+          character: '关羽',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '打出牌', '武圣'],
+          handCount: 1,
+          hand: [redDodge],
+          marks: [],
         },
         {
-          index: 1, name: '曹操', character: '曹操', health: 4, maxHealth: 4, alive: true,
-          equipment: {}, skills: ['使用牌', '打出牌'], handCount: 0, marks: [],
+          index: 1,
+          name: '曹操',
+          character: '曹操',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '打出牌'],
+          handCount: 0,
+          marks: [],
         },
       ],
       cardMap: { c1: redDodge },
       pending: {
         type: 'awaits',
         atom: { type: '询问杀', target: 0, source: 1 } as GameView['pending'] extends infer P
-          ? P extends { atom: infer A } ? A : never : never,
+          ? P extends { atom: infer A }
+            ? A
+            : never
+          : never,
         prompt: {
           type: 'useCard',
           title: '请打出杀',
@@ -526,8 +552,15 @@ describe('GameView:贯石斧被动 distribute(杀被闪抵消后选 2 张弃置�
       },
       pending: {
         type: 'awaits',
-        atom: { type: '请求回应', requestType: '贯石斧/select', target: 0 } as GameView['pending'] extends infer P
-          ? P extends { atom: infer A } ? A : never : never,
+        atom: {
+          type: '请求回应',
+          requestType: '贯石斧/select',
+          target: 0,
+        } as GameView['pending'] extends infer P
+          ? P extends { atom: infer A }
+            ? A
+            : never
+          : never,
         prompt: {
           type: 'distribute',
           title: '贯石斧:选择 2 张牌弃置强命(不选则不发动)',
@@ -594,8 +627,15 @@ describe('GameView:贯石斧被动 distribute(杀被闪抵消后选 2 张弃置�
       ],
       pending: {
         type: 'awaits',
-        atom: { type: '请求回应', requestType: '火攻/弃牌', target: 0 } as GameView['pending'] extends infer P
-          ? P extends { atom: infer A } ? A : never : never,
+        atom: {
+          type: '请求回应',
+          requestType: '火攻/弃牌',
+          target: 0,
+        } as GameView['pending'] extends infer P
+          ? P extends { atom: infer A }
+            ? A
+            : never
+          : never,
         // 火攻使用者视角:看完展示的♦后要挑同花色♦弃置——询问必须与展示同时可见
         prompt: { type: 'confirm', title: '是否弃置一张♦牌?' },
         target: 0,
@@ -765,6 +805,64 @@ describe('GameView:selectTarget 型主动技按钮', () => {
     });
     expect(hpBtn).toBeDefined();
   });
+
+  // 回归:弃武器变体需要一张武器牌(引擎 validate 要求 cardId),旧实现没有任何客户端
+  // 提供它 —— 浏览器没有选牌步骤、无头枚举只发 {cost:'discard'} → 提交恒拒
+  // 「弃武器需要 cardId」。现在:先选中一张武器牌再点变体按钮 → 提交携带 cardId。
+  it('强袭·弃一张武器牌:先选中武器牌 → 提交携带 cardId', async () => {
+    const base = makeView();
+    const weapon: Card = {
+      id: 'w1',
+      name: '青釭剑',
+      suit: '♠',
+      color: '黑',
+      rank: '6',
+      type: '装备牌',
+      subtype: '武器',
+    };
+    const view: GameView = makeView({
+      players: [
+        {
+          ...base.players[0],
+          skills: ['强袭'],
+          handCount: 2,
+          hand: [weapon, makeCard('c9', '杀')],
+        },
+        { ...base.players[1], name: 'P2', character: 'P2' },
+      ],
+      cardMap: { ...base.cardMap, w1: weapon },
+    });
+    const onAction = vi.fn();
+    const { container } = render(<GameViewComponent view={view} onAction={onAction} />);
+
+    // 先选中武器牌(武器牌以「装备」入口渲染,选中后变体提交才能带上 cardId)
+    const weaponEl = await waitFor(() => {
+      const el = container.querySelector('[data-card-id="w1"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    await act(async () => {
+      fireEvent.click(weaponEl);
+    });
+
+    const discardBtn = await screen.findByRole('button', { name: /强袭·弃一张武器牌/ });
+    await act(async () => {
+      fireEvent.click(discardBtn);
+    });
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-player-name="P2"]')!);
+    });
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: '强袭',
+          actionType: 'use',
+          params: expect.objectContaining({ target: 1, cost: 'discard', cardId: 'w1' }),
+        }),
+      );
+    });
+  });
 });
 
 // ─── 转化技回应窗口:倾国(黑牌当闪)──────────────────────────────
@@ -778,7 +876,14 @@ describe('GameView:转化技回应窗口(倾国 黑牌当闪)', () => {
   });
 
   it('被询问闪时:倾国按钮出现 → 选黑牌 → 提交 闪.respond + preceding transform', async () => {
-    const blackKill: Card = { id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const blackKill: Card = {
+      id: 'k1',
+      name: '杀',
+      suit: '♠',
+      color: '黑',
+      rank: '7',
+      type: '基本牌',
+    };
     const view: GameView = {
       viewer: 0,
       currentPlayerIndex: 1, // 别人回合:被杀指定
@@ -786,12 +891,29 @@ describe('GameView:转化技回应窗口(倾国 黑牌当闪)', () => {
       turn: { round: 1, phase: '出牌', vars: {} },
       players: [
         {
-          index: 0, name: '甄姬', character: '甄姬', health: 3, maxHealth: 3, alive: true,
-          equipment: {}, skills: ['使用牌', '打出牌', '倾国'], handCount: 1, hand: [blackKill], marks: [],
+          index: 0,
+          name: '甄姬',
+          character: '甄姬',
+          health: 3,
+          maxHealth: 3,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '打出牌', '倾国'],
+          handCount: 1,
+          hand: [blackKill],
+          marks: [],
         },
         {
-          index: 1, name: 'P1', character: 'P1', health: 4, maxHealth: 4, alive: true,
-          equipment: {}, skills: ['使用牌', '打出牌'], handCount: 0, marks: [],
+          index: 1,
+          name: 'P1',
+          character: 'P1',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '打出牌'],
+          handCount: 0,
+          marks: [],
         },
       ],
       cardMap: { k1: blackKill },

@@ -439,3 +439,61 @@ describe('替代出法(alt action)的枚举必须带合法目标', () => {
     expect(res.accepted, '义绝替代出法(补 targets 后)必须被引擎接受').toBe(true);
   });
 });
+
+// ─── 变体声明的代价牌(强袭·弃武器) ───
+// 引擎 validate 要求 cost:'discard' 时必带 cardId(武器牌);旧实现变体只声明 {cost:'discard'},
+// 无头枚举不提供 cardId、浏览器也没有选牌步骤 → 该代价分支在真实客户端恒拒(「弃武器需要 cardId」)。
+describe('变体代价牌(paramVariants.cardFilter)的枚举必须可提交', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it.each(['强袭', '界强袭'])(
+    '%s:弃武器变体枚举出「每个武器牌 × 每个目标」且都被接受',
+    async (skillId) => {
+      const build = async () => {
+        const state: GameState = createGameState({
+          players: [
+            mkPlayer(0, 'P0', ['w1', 'd1'], [skillId, '杀', '回合管理']),
+            mkPlayer(1, 'P1', [], ['回合管理']),
+          ],
+          cardMap: {
+            w1: { ...mkCard('w1', '青釭剑', '♠', '6', '装备牌'), subtype: '武器' },
+            d1: mkCard('d1', '闪', '♥', '2'),
+          },
+          currentPlayerIndex: 0,
+          phase: '出牌',
+          turn: { round: 1, phase: '出牌', vars: {} },
+        });
+        state.zones = { deck: [], discardPile: [], processing: [] };
+        await registerSkillsFromState(state);
+        clearRegistry();
+        for (const p of state.players) await registerSkillActions(p.index, p.skills);
+        return state;
+      };
+
+      const state0 = await build();
+      const actions = enumerateAvailableActions(
+        buildView(state0, 0),
+        0,
+        getActionsForPlayer(0),
+      ).filter((a) => a.message.skillId === skillId);
+      const discard = actions.filter((a) => a.message.params.cost === 'discard');
+      const hp = actions.filter((a) => a.message.params.cost !== 'discard');
+      expect(hp.length, '体力/伤害代价变体仍应枚举').toBeGreaterThan(0);
+      expect(discard.length, '弃武器变体应枚举(带武器牌)').toBeGreaterThan(0);
+      // 每个弃武器动作都预填了武器牌 cardId
+      for (const a of discard) expect(a.message.params.cardId).toBe('w1');
+
+      // 逐个提交(每次全新 state:强袭每阶段限次 + 目标去重)
+      for (const a of [...hp, ...discard]) {
+        const state = await build();
+        const res = await dispatch(state, { ...a.message, ownerId: 0, baseSeq: state.seq });
+        expect(
+          res.accepted,
+          `${skillId} 变体 ${JSON.stringify(a.message.params)} 必须被引擎接受`,
+        ).toBe(true);
+      }
+    },
+  );
+});

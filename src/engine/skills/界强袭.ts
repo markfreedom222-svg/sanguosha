@@ -19,7 +19,7 @@
 //
 // 命名:文件名/loader key/character skill name 均为 '界强袭'(避开标强袭冲突);
 //   内部 Skill.name = '强袭'(OL 官方技能名,玩家可见)。
-import type { FrontendAPI, GameState, Json, Skill } from '../types';
+import type { Card, FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame } from '../core/frame';
 import { runDamageFlow } from '../flows/damage';
@@ -178,7 +178,13 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
       // 会让「受到1点伤害」分支提交即被拒,该代价分支在浏览器/AI 整类不可用。
       paramVariants: [
         { label: '受到1点伤害', params: { cost: 'damage' } },
-        { label: '弃一张武器牌(需补 cardId)', params: { cost: 'discard' } },
+        {
+          label: '弃一张武器牌(先选中武器牌)',
+          params: { cost: 'discard' },
+          // 需要一张武器牌(手牌或装备区):浏览器取选中的武器牌/自己的装备区武器,
+          // 无头枚举按「每个武器牌 × 每个合法目标」展开 —— 否则提交缺 cardId 恒被拒。
+          cardFilter: (c: Card) => isWeaponCard(c),
+        },
       ],
     },
     activeWhen: (ctx) => {

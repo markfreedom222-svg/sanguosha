@@ -504,6 +504,7 @@ function enumeratePromptActions(
   skillActions: SkillActionDef[],
 ): AvailableAction[] {
   const ctx: ActionContext = { view, perspectiveIdx: seatIndex };
+  const me = view.players[seatIndex];
   const result: AvailableAction[] = [];
   for (const action of skillActions) {
     if (action.actionType !== 'use') continue;
@@ -569,21 +570,43 @@ function enumeratePromptActions(
       prompt.type === 'selectTarget' && prompt.paramVariants?.length
         ? prompt.paramVariants
         : [{ label: '', params: {} as Record<string, Json> }];
+    // 变体声明的代价牌(强袭·弃武器):按「每个候选牌 × 每个合法目标」展开并预填 cardId,
+    // 否则 agent 提交缺 cardId 被引擎恒拒「弃武器需要 cardId」(浏览器侧同源:选中武器牌后提交)。
+    const equipIds = new Set(
+      Object.values(me.equipment ?? {}).filter((id): id is string => typeof id === 'string'),
+    );
     for (const t of validTargets) {
       const targetName = view.players[t]?.name ?? `P${t}`;
       for (const variant of variants) {
         const suffix = variant.label ? `(${variant.label})` : '';
-        result.push({
-          description: `发动【${action.label}】${suffix} → ${targetName}`,
-          message: {
-            ...base,
-            // target 与 targets 同时携带:selectTarget 型技能两种读法都有
-            // (反间/雄乱 读 params.targets,挑衅/强袭/激将 读 params.target)。
-            params: { target: t, targets: [t], ...variant.params },
-          },
-          validTargets: [t],
-          category: 'play',
-        });
+        const costCards = variant.cardFilter
+          ? [
+              ...(me.hand ?? []).filter((c) => variant.cardFilter!(c)),
+              ...[...equipIds]
+                .map((id) => view.cardMap[id])
+                .filter((c): c is Card => !!c && variant.cardFilter!(c)),
+            ]
+          : [undefined];
+        if (variant.cardFilter && costCards.length === 0) continue; // 无代价牌 → 该变体不可用
+        for (const costCard of costCards) {
+          const cardSuffix = costCard ? `(${costCard.suit}${costCard.rank})` : '';
+          result.push({
+            description: `发动【${action.label}】${suffix}${cardSuffix} → ${targetName}`,
+            message: {
+              ...base,
+              // target 与 targets 同时携带:selectTarget 型技能两种读法都有
+              // (反间/雄乱 读 params.targets,挑衅/强袭/激将 读 params.target)。
+              params: {
+                target: t,
+                targets: [t],
+                ...variant.params,
+                ...(costCard ? { cardId: costCard.id } : {}),
+              },
+            },
+            validTargets: [t],
+            category: 'play',
+          });
+        }
       }
     }
   }

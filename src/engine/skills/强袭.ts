@@ -15,8 +15,8 @@
 //     后缀 /usedThisTurn → 回合结束自动清空。每次发动后追加本次目标,通过「回合用量」
 //     atom 同步 view.turnUsage 供前端 targetFilter 过滤已指定目标。
 //   - 官方未提距离限制,故不再校验目标是否在攻击范围内。
-import type { FrontendAPI, GameState, Json, Skill } from '../types';
-import { applyAtom } from '../core/apply'
+import type { Card, FrontendAPI, GameState, Json, Skill } from '../types';
+import { applyAtom } from '../core/apply';
 import { popFrame, pushFrame } from '../core/frame';
 import { runDamageFlow } from '../flows/damage';
 import { defaultPlayActive } from '../rules/action-active';
@@ -170,7 +170,13 @@ export function onMount(skill: Skill, api: FrontendAPI): () => void {
       // 枚举层(无头客户端/AI)按变体展开生成可执行 action;弃武器分支还需补 cardId(武器牌)。
       paramVariants: [
         { label: '失去1点体力', params: { cost: 'hp' } },
-        { label: '弃一张武器牌(需补 cardId)', params: { cost: 'discard' } },
+        {
+          label: '弃一张武器牌(先选中武器牌)',
+          params: { cost: 'discard' },
+          // 需要一张武器牌(手牌或装备区):浏览器取选中的武器牌/自己的装备区武器,
+          // 无头枚举按「每个武器牌 × 每个合法目标」展开 —— 否则提交缺 cardId 恒被拒。
+          cardFilter: (c: Card) => isWeaponCard(c),
+        },
       ],
     },
     activeWhen: (ctx) => {

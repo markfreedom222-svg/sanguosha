@@ -133,9 +133,7 @@ export function derivePlayRules(
   const hasSlots = !!slots && slots.length > 1;
   const slotCount = slots?.length ?? 0;
   const isSelf = !!selfTarget;
-  const needsTarget = isSelf
-    ? false
-    : hasSlots || (targetFilter ? targetFilter.max >= 1 : false);
+  const needsTarget = isSelf ? false : hasSlots || (targetFilter ? targetFilter.max >= 1 : false);
   // 多目标:非槽位、非自动自身、targetFilter.max>=2(铁索连环/可多目标的杀)。
   // 这类卡牌点击目标为「累加到一个集合」而非单选/分槽位。
   const multiTarget = !hasSlots && !isSelf && (targetFilter?.max ?? 0) >= 2;
@@ -239,10 +237,14 @@ export function resolveDistributeCardIds(
  *  与无头客户端 enumeratePromptActions 的变体展开同源(同一份 prompt.paramVariants 声明)。 */
 export function skillActionVariants(
   action: SkillActionDef,
-): Array<{ label: string; params: Record<string, Json> }> {
+): Array<{ label: string; params: Record<string, Json>; cardFilter?: (card: Card) => boolean }> {
   const prompt = action.prompt;
   if (prompt.type === 'selectTarget' && prompt.paramVariants?.length) {
-    return prompt.paramVariants.map((v) => ({ label: v.label, params: v.params }));
+    return prompt.paramVariants.map((v) => ({
+      label: v.label,
+      params: v.params,
+      ...(v.cardFilter ? { cardFilter: v.cardFilter } : {}),
+    }));
   }
   return [{ label: '', params: {} }];
 }
@@ -267,9 +269,7 @@ export function isFreePlayWindow({ isMyTurn, phase, pending }: FreePlayWindowInp
 }
 
 /** 「结束回合」按钮:可操作且处于自由出牌窗口。 */
-export function canShowEndTurnButton(
-  opts: FreePlayWindowInput & { canOperate: boolean },
-): boolean {
+export function canShowEndTurnButton(opts: FreePlayWindowInput & { canOperate: boolean }): boolean {
   return opts.canOperate && isFreePlayWindow(opts);
 }
 
@@ -336,17 +336,50 @@ export function displayCardName(name: string, damageType?: string): string {
 const ARC_PRESETS: Record<number, Array<[number, number]>> = {
   1: [[50, 1]],
   // 2(3人局):两对手分居左右中位(p0),主公概念上在顶中;i=0 为右侧下家
-  2: [[89, 34], [9, 34]],
+  2: [
+    [89, 34],
+    [9, 34],
+  ],
   // 3:顶排三连
-  3: [[85, 1], [50, 0], [15, 1]],
+  3: [
+    [85, 1],
+    [50, 0],
+    [15, 1],
+  ],
   // 4:右中 → 顶右 → 顶左 → 左中
-  4: [[92, 22], [80, 1], [20, 1], [6, 24]],
+  4: [
+    [92, 22],
+    [80, 1],
+    [20, 1],
+    [6, 24],
+  ],
   // 5:右中 → 顶排三 → 左中
-  5: [[92, 24], [78, 1], [50, 0], [22, 1], [6, 26]],
+  5: [
+    [92, 24],
+    [78, 1],
+    [50, 0],
+    [22, 1],
+    [6, 26],
+  ],
   // 6:右中 → 顶右 → 顶中 → 顶左 → 左上 → 左下(自己概念上在右下)
-  6: [[93, 20], [74, 1], [50, 0], [26, 1], [6, 12], [6, 52]],
+  6: [
+    [93, 20],
+    [74, 1],
+    [50, 0],
+    [26, 1],
+    [6, 12],
+    [6, 52],
+  ],
   // 7:右纵列两座 → 顶排三 → 左纵列两座
-  7: [[93, 58], [93, 18], [72, 1], [50, 0], [28, 1], [6, 12], [6, 52]],
+  7: [
+    [93, 58],
+    [93, 18],
+    [72, 1],
+    [50, 0],
+    [28, 1],
+    [6, 12],
+    [6, 52],
+  ],
 };
 
 export function arcLayout(totalOthers: number, i: number): { leftPct: number; topPct: number } {

@@ -14,6 +14,7 @@
 
 import { useState, useCallback, useEffect, useMemo, type RefObject } from 'react';
 import type {
+  ActionPrompt,
   Card,
   CardWrapper,
   GameView,
@@ -582,16 +583,44 @@ export function usePlayInteraction(
    *  单选(max<=1)技能在点座位时即提交;多选技能走「点座位累加 + 再点按钮」。
    *  target 与 targets 同时携带:反间/攻心/雄乱 读 targets(单选也须为长度 1 数组),
    *  挑衅/强袭/激将 读 target。 */
+  /** 变体声明的额外代价牌(如强袭·弃武器需要一张武器牌)填入 params.cardId:
+   *  优先当前选中的手牌(须满足变体 cardFilter),否则自己的装备区武器。
+   *  PlayerCardLarge 传入的 extraParams 可能是副本,故变体定位先按引用、再按内容。 */
+  const fillVariantCostCard = useCallback(
+    (prompt: ActionPrompt, extra: Record<string, Json>, params: Record<string, Json>): void => {
+      if (prompt.type !== 'selectTarget' || !prompt.paramVariants) return;
+      const variant =
+        prompt.paramVariants.find((v) => v.params === extra) ??
+        prompt.paramVariants.find((v) => JSON.stringify(v.params) === JSON.stringify(extra));
+      const filter = variant?.cardFilter;
+      if (!filter || params.cardId !== undefined) return;
+      const selected = selectedCardId
+        ? perspectiveHand.find((c) => c.id === selectedCardId)
+        : undefined;
+      const handCard = selected && filter(selected) ? selected : undefined;
+      const equipCard = Object.values(perspectiveEquipment)
+        .map((id) => (typeof id === 'string' ? view.cardMap[id] : undefined))
+        .find((c): c is Card => !!c && filter(c));
+      const cost = handCard ?? equipCard;
+      if (cost) params.cardId = cost.id;
+    },
+    [selectedCardId, perspectiveHand, perspectiveEquipment, view.cardMap],
+  );
+
   const submitSkillTarget = useCallback(
     (action: SkillActionDef, targetName: string, extra: Record<string, Json>) => {
       const idx = nameToIndex(targetName);
       if (idx < 0) return;
-      send(action.skillId, action.actionType, { ...extra, target: idx, targets: [idx] });
+      const params: Record<string, Json> = { ...extra, target: idx, targets: [idx] };
+      // 变体声明的代价牌(强袭·弃武器):提交时兜底补 params.cardId ——
+      // 覆盖「先点技能按钮、后选武器牌、再点目标」的顺序。
+      fillVariantCostCard(action.prompt, extra, params);
+      send(action.skillId, action.actionType, params);
       setSelectedTarget(null);
       setSelectedCardId(null);
       setPendingSkillAction(null);
     },
-    [nameToIndex, send],
+    [nameToIndex, send, fillVariantCostCard],
   );
 
   const isTargetable = useCallback(
@@ -846,6 +875,8 @@ export function usePlayInteraction(
     ) => {
       const { skillId, actionType, prompt } = action;
       const params: Record<string, Json> = { ...(extraParams ?? {}) };
+      // 变体声明的代价牌(强袭·弃武器):点击变体按钮时已选中武器牌 → 立即带上 cardId
+      fillVariantCostCard(prompt, extraParams ?? {}, params);
       // selectTarget/choosePlayer 型主动技:需要目标。无目标时先进入选目标模式
       // (座位环按 prompt 的 targetFilter/filter 高亮),选好目标再点按钮提交——
       // 与出牌(选牌→选目标→出牌)同一交互范式。此前无目标直接 return,按钮点了没反应。
