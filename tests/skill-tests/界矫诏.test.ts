@@ -97,9 +97,10 @@ describe('界矫诏', () => {
     // 转化:c1 → 杀(影子 id=c1#界矫诏);preceding + 杀.use
     await P0.transformThenUse(
       '界矫诏',
-      { cardId: 'c1', outputName: '杀' },
+      { cardId: 'c1' },
       '杀',
       { cardId: 'c1#界矫诏', targets: [1] },
+      'transform:杀',
     );
     // P1 不闪
     await P1.pass();
@@ -115,7 +116,12 @@ describe('界矫诏', () => {
     const src = makeCard('c1', '杀', '♠', '7');
     const state: GameState = createGameState({
       players: [
-        makePlayer({ index: 0, name: 'P0', hand: ['c1'], skills: ['界矫诏', '杀', '闪', '桃', '无中生有'] }),
+        makePlayer({
+          index: 0,
+          name: 'P0',
+          hand: ['c1'],
+          skills: ['界矫诏', '杀', '闪', '桃', '无中生有'],
+        }),
         makePlayer({ index: 1, name: 'P1', character: '曹操' }),
       ],
       cardMap: { c1: src },
@@ -130,9 +136,10 @@ describe('界矫诏', () => {
     const handBefore = harness.state.players[0].hand.length;
     await P0.transformThenUse(
       '界矫诏',
-      { cardId: 'c1', outputName: '无中生有' },
+      { cardId: 'c1' },
       '无中生有',
       { cardId: 'c1#界矫诏', targets: [0] },
+      'transform:无中生有',
     );
     // 询问无懈可击:P1 pass(无无懈可击 → 不抵消 → 摸两张)
     await P1.pass();
@@ -162,9 +169,10 @@ describe('界矫诏', () => {
     // 第一次:转化杀 + 出杀(P1 不闪)
     await P0.transformThenUse(
       '界矫诏',
-      { cardId: 'c1', outputName: '杀' },
+      { cardId: 'c1' },
       '杀',
       { cardId: 'c1#界矫诏', targets: [1] },
+      'transform:杀',
     );
     await harness.player('P1').pass();
     expect(usedThisTurn(harness.state, 0)).toBe(true);
@@ -346,9 +354,10 @@ describe('界矫诏', () => {
 
     await P0.transformThenUse(
       '界矫诏',
-      { cardId: 'c1', outputName: '杀' },
+      { cardId: 'c1' },
       '杀',
       { cardId: 'c1#界矫诏', targets: [1] },
+      'transform:杀',
     );
     await harness.player('P1').pass();
 

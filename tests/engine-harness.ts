@@ -258,9 +258,7 @@ export class PlayerSession {
         // applyView 后调 toViewLog 生成日志条目。time 取事件 seq 近似(测试不需要真实时间)。
         // resolveName 把座次号映射为角色名(与 viewReducer 一致),让测试断言能读到角色名。
         const resolveName = (idx: number) =>
-          idx < 0
-            ? undefined
-            : this.processedView.players.find((q) => q.index === idx)?.name;
+          idx < 0 ? undefined : this.processedView.players.find((q) => q.index === idx)?.name;
         const logEntry = def.toViewLog?.(evt, this.processedView.viewer, resolveName);
         if (logEntry) {
           this.processedView.log.push({
@@ -473,7 +471,9 @@ export class PlayerSession {
       const players = view.players
         .map((p) => `P${p.index}:${p.character || '?'} hp=${p.health} hand=${p.handCount}`)
         .join(', ');
-      throw new Error(`expectView 断言失败: ${players}\n${e instanceof Error ? e.message : e}`, { cause: e });
+      throw new Error(`expectView 断言失败: ${players}\n${e instanceof Error ? e.message : e}`, {
+        cause: e,
+      });
     }
   }
 
@@ -558,12 +558,17 @@ export class PlayerSession {
     transformParams: Record<string, Json>,
     useSkill: string,
     useParams: Record<string, Json>,
+    /** 转化 action 的 actionType(缺省 'transform')。多声明型转化技(界渐营/界矫诏)
+     *  按声明牌名拆成多个 action(`transform:杀`…),必须显式指定。 */
+    transformActionType = 'transform',
   ): Promise<void> {
     return this.dispatch({
       skillId: useSkill,
       actionType: 'use',
       params: useParams,
-      preceding: [{ skillId: transformSkill, actionType: 'transform', params: transformParams }],
+      preceding: [
+        { skillId: transformSkill, actionType: transformActionType, params: transformParams },
+      ],
     });
   }
 
@@ -584,9 +589,7 @@ export class PlayerSession {
       skillId: respondSkill,
       actionType: 'respond',
       params: respondParams,
-      preceding: [
-        { skillId: transformSkill, actionType: 'transform', params: transformParams },
-      ],
+      preceding: [{ skillId: transformSkill, actionType: 'transform', params: transformParams }],
     });
   }
 
@@ -620,7 +623,9 @@ export class PlayerSession {
       ...msg,
       ownerId: this.playerIndex,
       baseSeq: this.harness.state.seq,
-    }).catch(() => ({ accepted: false, settle: Promise.resolve<Error | undefined>(undefined) }) as const);
+    }).catch(
+      () => ({ accepted: false, settle: Promise.resolve<Error | undefined>(undefined) }) as const,
+    );
     await this.harness.waitForStable();
     return result.accepted;
   }

@@ -370,3 +370,51 @@ describe('转化技产出牌的目标语义(界龙胆)', () => {
     expect(res.accepted, '客户端枚举的桃当酒必须被引擎接受').toBe(true);
   });
 });
+
+// ─── 多声明型转化技(界渐营/界矫诏):一个声明牌名一个 action ───
+// 契约:客户端枚举出的动作必须携带与引擎注册一致的 actionType(`transform:<牌名>`)与
+// 产出牌名。旧实现只有一个无 transform 回调的 'transform' action,且 outputName 无人提供:
+// 浏览器提交 {cardId} 缺声明牌名被拒,无头枚举直接跳过 → 两技能在任何真实客户端不可发动。
+describe('多声明型转化技(界渐营/界矫诏)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('界渐营:枚举出的「当杀」动作 actionType=transform:杀 且被引擎接受', async () => {
+    const { state, actions } = await enumerateTransforms({
+      players: [mkPlayer(0, 'P0', ['c1'], ['界渐营', '杀', '回合管理']), mkPlayer(1, 'P1', [], [])],
+      cardMap: { c1: mkCard('c1', '闪', '♣', '7') },
+      seat: 0,
+    });
+    const tf = actions.find((a) => a.message.skillId === '杀' && a.category === 'transform');
+    expect(tf, '客户端应枚举出界渐营「当杀」转化').toBeDefined();
+    expect(tf!.message.preceding![0].actionType).toBe('transform:杀');
+    expect(tf!.message.params.cardId).toBe('c1#界渐营');
+
+    const res = await dispatch(state, {
+      ...tf!.message,
+      params: { ...tf!.message.params, targets: tf!.validTargets.slice(0, 1) },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(res.accepted, '客户端枚举的界渐营转化必须被引擎接受').toBe(true);
+  });
+
+  it('界矫诏:枚举出的「当无中生有」动作 actionType=transform:无中生有 且被引擎接受', async () => {
+    const { state, actions } = await enumerateTransforms({
+      players: [
+        mkPlayer(0, 'P0', ['c1'], ['界矫诏', '无中生有', '回合管理']),
+        mkPlayer(1, 'P1', [], []),
+      ],
+      cardMap: { c1: mkCard('c1', '闪', '♣', '7') },
+      seat: 0,
+    });
+    const tf = actions.find((a) => a.category === 'transform' && a.message.skillId === '无中生有');
+    expect(tf, '客户端应枚举出界矫诏「当无中生有」转化').toBeDefined();
+    expect(tf!.message.preceding![0].actionType).toBe('transform:无中生有');
+    expect(tf!.message.params.cardId).toBe('c1#界矫诏');
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的界矫诏转化必须被引擎接受').toBe(true);
+  });
+});

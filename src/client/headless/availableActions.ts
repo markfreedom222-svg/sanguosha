@@ -13,6 +13,7 @@ import type { SkillActionDef } from '../skillActionRegistry';
 import type { AvailableAction } from './types';
 import {
   isActiveAction,
+  hasUseEntry,
   findUseActionForCard,
   findAltActionsForCard,
   derivePlayRules,
@@ -313,6 +314,11 @@ function enumerateTransformActions(
       // 会枚举出引擎必拒的动作(「只能对自己使用酒」/「桃只能对受伤角色使用」)。
       // 产出牌无 use action(闪/无懈 等回应牌)时回退到 transform 自身规则。
       const produced = findUseActionForCard(skillActions, { ...card, name: wrapperName });
+      // 产出牌在出牌阶段必须真的能用:闪/无懈可击(timing='生效前')没有主动 use 入口,
+      // 「当闪使用」在出牌阶段无意义(引擎无对应 action,提交恒拒);产出牌的 use action
+      // 未激活(如 桃 需自己已受伤)时同理 —— 不枚举必然被拒的动作。
+      if (!hasUseEntry({ name: wrapperName } as Card)) continue;
+      if (produced && !isActiveAction(produced, ctx)) continue;
       const cardTargetFilter = produced ? getTargetFilter(produced.prompt) : targetFilter;
       const cardRules = produced
         ? derivePlayRules(cardTargetFilter, getSelfTarget(produced.prompt))

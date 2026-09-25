@@ -310,9 +310,10 @@ describe('界渐营', () => {
 
       await P0.transformThenUse(
         '界渐营',
-        { cardId: 'c1', outputName: '杀' },
+        { cardId: 'c1' },
         '杀',
         { cardId: 'c1#界渐营', targets: [1] },
+        'transform:杀',
       );
       await harness.player(1).pass();
 
@@ -346,9 +347,10 @@ describe('界渐营', () => {
     // 第一次:转化 + 使用
     await P0.transformThenUse(
       '界渐营',
-      { cardId: 'c1', outputName: '杀' },
+      { cardId: 'c1' },
       '杀',
       { cardId: 'c1#界渐营', targets: [1] },
+      'transform:杀',
     );
     await harness.player(1).pass();
     expect(transformUsed(harness.state, 0)).toBe(true);
@@ -356,8 +358,8 @@ describe('界渐营', () => {
     // 第二次:仅触发 transform 应被拒绝
     await P0.expectRejected({
       skillId: '界渐营',
-      actionType: 'transform',
-      params: { cardId: 'c2', outputName: '杀' },
+      actionType: 'transform:杀',
+      params: { cardId: 'c2' },
     });
   });
 
@@ -388,10 +390,7 @@ describe('界渐营', () => {
       expect(lastSuit(harness.state)).toBe('♥');
 
       // 单独触发 transform(不 use)→ 检查影子卡花色
-      await P0.triggerAction('界渐营', 'transform', {
-        cardId: 's1',
-        outputName: '杀',
-      });
+      await P0.triggerAction('界渐营', 'transform:杀', { cardId: 's1' });
 
       // 验证影子卡被 override 为 ♥
       const shadow = harness.state.cardMap['s1#界渐营'];
@@ -422,10 +421,7 @@ describe('界渐营', () => {
       const P0 = harness.player('P0');
 
       // 阶段首张即转化:无上一张 → 不继承
-      await P0.triggerAction('界渐营', 'transform', {
-        cardId: 'c1',
-        outputName: '杀',
-      });
+      await P0.triggerAction('界渐营', 'transform:杀', { cardId: 'c1' });
 
       const shadow = harness.state.cardMap['c1#界渐营'];
       expect(shadow).toBeDefined();
