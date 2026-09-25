@@ -57,7 +57,6 @@ function makeView(
   };
 }
 
-
 /** 端到端用例用的最小玩家对象(字段齐备,供 harness.setup / createGameState)。 */
 function makePlayerForEnum(opts: { index: number; name: string; skills?: string[] }) {
   return {
@@ -356,10 +355,7 @@ describe('enumerateAvailableActions', () => {
 
   it('武圣转化：有红色牌时生成 transform action', () => {
     const view = makeView(0, '出牌', [redCard]);
-    const actions = enumerateAvailableActions(view, 0, [
-      killUseAction,
-      wushengTransformAction,
-    ]);
+    const actions = enumerateAvailableActions(view, 0, [killUseAction, wushengTransformAction]);
     const tf = actions.filter((x) => x.category === 'transform');
     expect(tf.length).toBeGreaterThanOrEqual(1);
     const a = tf[0];
@@ -434,8 +430,22 @@ describe('enumerateAvailableActions', () => {
   // 而引擎创建的影子卡名是【万箭齐发】→ 主 action validate 恒拒(不是杀),
   // 乱击/界乱击在浏览器之外的 AI/无头客户端整类不可用。
   it('乱击转化(多卡):主 action 由 transform 回调决定,产出【万箭齐发】', () => {
-    const spade1: Card = { id: 's1', name: '杀', suit: '♠', color: '黑', rank: '5', type: '基本牌' };
-    const spade2: Card = { id: 's2', name: '闪', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const spade1: Card = {
+      id: 's1',
+      name: '杀',
+      suit: '♠',
+      color: '黑',
+      rank: '5',
+      type: '基本牌',
+    };
+    const spade2: Card = {
+      id: 's2',
+      name: '闪',
+      suit: '♠',
+      color: '黑',
+      rank: '7',
+      type: '基本牌',
+    };
     const view = makeView(0, '出牌', [spade1, spade2]);
     const actions = enumerateAvailableActions(view, 0, [luanjiTransformAction]);
     const tf = actions.filter((x) => x.category === 'transform');
@@ -454,10 +464,7 @@ describe('enumerateAvailableActions', () => {
   // 补 transform 字段后:主 action=铁索连环.use + preceding=连环.transform。
   it('连环转化:梅花牌生成 transform action,主 action 为铁索连环.use', () => {
     const view = makeView(0, '出牌', [clubCard]);
-    const actions = enumerateAvailableActions(view, 0, [
-      chainUseAction,
-      lianhuanTransformAction,
-    ]);
+    const actions = enumerateAvailableActions(view, 0, [chainUseAction, lianhuanTransformAction]);
     const tf = actions.find((x) => x.category === 'transform');
     expect(tf).toBeDefined();
     expect(tf!.message.skillId).toBe('铁索连环');
@@ -475,10 +482,7 @@ describe('enumerateAvailableActions', () => {
 
   it('制衡分配：出牌阶段生成 distribute action（select 模式）', () => {
     const view = makeView(0, '出牌', [killCard, redCard]);
-    const actions = enumerateAvailableActions(view, 0, [
-      killUseAction,
-      zhihengDistributeAction,
-    ]);
+    const actions = enumerateAvailableActions(view, 0, [killUseAction, zhihengDistributeAction]);
     const dist = actions.find((x) => x.category === 'distribute');
     expect(dist).toBeDefined();
     expect(dist!.message.skillId).toBe('制衡');
@@ -496,10 +500,7 @@ describe('enumerateAvailableActions', () => {
 
   it('仁德分配：出牌阶段生成 distribute action（allocate 模式）', () => {
     const view = makeView(0, '出牌', [killCard, redCard]);
-    const actions = enumerateAvailableActions(view, 0, [
-      killUseAction,
-      rendeDistributeAction,
-    ]);
+    const actions = enumerateAvailableActions(view, 0, [killUseAction, rendeDistributeAction]);
     const dist = actions.find((x) => x.category === 'distribute');
     expect(dist).toBeDefined();
     expect(dist!.message.skillId).toBe('仁德');
@@ -537,14 +538,26 @@ describe('enumerateAvailableActions', () => {
 
   it('出牌阶段+当前玩家+阻塞 pending → 不包含 end action', () => {
     const view = makeView(0, '出牌', [killCard]);
-    view.pending = { type: 'awaits', atom: {} as never, prompt: {} as never, target: 0, isBlocking: true };
+    view.pending = {
+      type: 'awaits',
+      atom: {} as never,
+      prompt: {} as never,
+      target: 0,
+      isBlocking: true,
+    };
     const actions = enumerateAvailableActions(view, 0, [killUseAction]);
     expect(actions.find((a) => a.message.actionType === 'end')).toBeUndefined();
   });
 
   it('出牌阶段+当前玩家+非阻塞 pending → 包含 end action', () => {
     const view = makeView(0, '出牌', [killCard]);
-    view.pending = { type: 'awaits', atom: {} as never, prompt: {} as never, target: 0, isBlocking: false };
+    view.pending = {
+      type: 'awaits',
+      atom: {} as never,
+      prompt: {} as never,
+      target: 0,
+      isBlocking: false,
+    };
     const actions = enumerateAvailableActions(view, 0, [killUseAction]);
     expect(actions.find((a) => a.message.actionType === 'end')).toBeDefined();
   });
@@ -645,9 +658,7 @@ describe('enumerateAvailableActions', () => {
   it('铁索连环·重铸作为替代动作被枚举（actionType=recast）', () => {
     const view = makeView(0, '出牌', [chainCard]);
     const actions = enumerateAvailableActions(view, 0, [chainUseAction, chainRecastAction]);
-    const recast = actions.find(
-      (x) => x.category === 'play' && x.message.actionType === 'recast',
-    );
+    const recast = actions.find((x) => x.category === 'play' && x.message.actionType === 'recast');
     expect(recast).toBeDefined();
     expect(recast!.message.skillId).toBe('铁索连环');
     expect(recast!.message.params.cardId).toBe('c-chain');
@@ -657,9 +668,7 @@ describe('enumerateAvailableActions', () => {
   it('铁索连环·重铸在非出牌阶段不出现', () => {
     const view = makeView(0, '摸牌', [chainCard]);
     const actions = enumerateAvailableActions(view, 0, [chainUseAction, chainRecastAction]);
-    expect(
-      actions.find((x) => x.message.actionType === 'recast'),
-    ).toBeUndefined();
+    expect(actions.find((x) => x.message.actionType === 'recast')).toBeUndefined();
   });
 
   // 断粮/界断粮:黑色杀同时匹配"杀"(主 use)和"断粮"(转化 use)。
@@ -706,9 +715,7 @@ describe('enumerateAvailableActions', () => {
     const view = makeView(0, '出牌', [blackSlash]);
     const actions = enumerateAvailableActions(view, 0, [slashUseAction, duanliangUseAction]);
     // 主 use(杀)出现在 play 类别
-    const playKill = actions.find(
-      (x) => x.category === 'play' && x.message.skillId === '杀',
-    );
+    const playKill = actions.find((x) => x.category === 'play' && x.message.skillId === '杀');
     expect(playKill).toBeDefined();
     // 断粮也出现在 play 类别(作为替代 use action)
     const playDuanliang = actions.find(
@@ -819,7 +826,9 @@ describe('HeadlessGameClient.getAvailableActions() — choosePlayer pending', ()
     const respondActions = actions.filter((a) => a.category === 'respond');
     // 单选(max===1):每个候选生成独立 respond action
     expect(respondActions).toHaveLength(2);
-    const targets = respondActions.map((a) => a.message.params.target as number).sort((x, y) => x - y);
+    const targets = respondActions
+      .map((a) => a.message.params.target as number)
+      .sort((x, y) => x - y);
     expect(targets).toEqual([1, 2]); // filter 排除自己(0)
     for (const a of respondActions) {
       const t = a.message.params.target as number;
@@ -851,7 +860,9 @@ describe('HeadlessGameClient.getAvailableActions() — choosePlayer pending', ()
     const respondActions = actions.filter((a) => a.category === 'respond');
     // 单选:每个存活玩家(含自己)一个 respond action
     expect(respondActions).toHaveLength(3);
-    const targets = respondActions.map((a) => a.message.params.target as number).sort((x, y) => x - y);
+    const targets = respondActions
+      .map((a) => a.message.params.target as number)
+      .sort((x, y) => x - y);
     expect(targets).toEqual([0, 1, 2]);
   });
 
@@ -878,7 +889,9 @@ describe('HeadlessGameClient.getAvailableActions() — choosePlayer pending', ()
     const respondActions = actions.filter((a) => a.category === 'respond');
     // 死亡玩家(2)不在候选:只有 0,1 两个 action
     expect(respondActions).toHaveLength(2);
-    const targets = respondActions.map((a) => a.message.params.target as number).sort((x, y) => x - y);
+    const targets = respondActions
+      .map((a) => a.message.params.target as number)
+      .sort((x, y) => x - y);
     expect(targets).toEqual([0, 1]);
   });
 
@@ -1045,8 +1058,31 @@ describe('HeadlessGameClient.getAvailableActions() — useCardAndTarget pending'
       phase: '出牌',
       turn: { round: 8, phase: '出牌', vars: {} },
       players: [
-        { index: 0, name: '刘备', character: '刘备', health: 4, maxHealth: 4, alive: true, equipment: {}, skills: [], handCount: 1, marks: [] },
-        { index: 1, name: '界小乔', character: '界小乔', health: 3, maxHealth: 3, alive: true, equipment: {}, skills: [], handCount: 2, hand: hand1, marks: [] },
+        {
+          index: 0,
+          name: '刘备',
+          character: '刘备',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: [],
+          handCount: 1,
+          marks: [],
+        },
+        {
+          index: 1,
+          name: '界小乔',
+          character: '界小乔',
+          health: 3,
+          maxHealth: 3,
+          alive: true,
+          equipment: {},
+          skills: [],
+          handCount: 2,
+          hand: hand1,
+          marks: [],
+        },
       ],
       cardMap: Object.fromEntries(hand1.map((c) => [c.id, c])),
       pending: {
@@ -1121,8 +1157,11 @@ describe('HeadlessGameClient.getAvailableActions() — 被动 distribute pending
     };
     view.pending = {
       type: 'awaits',
-      atom: { type: '请求回应', requestType: '贯石斧/select', target: 0 } as GameView['pending'] extends infer P
-        ? P extends { atom: infer A } ? A : never : never,
+      atom: {
+        type: '请求回应',
+        requestType: '贯石斧/select',
+        target: 0,
+      } as GameView['pending'] extends infer P ? (P extends { atom: infer A } ? A : never) : never,
       prompt: {
         type: 'distribute',
         title: '贯石斧:选择 2 张牌弃置强命(不选则不发动)',
@@ -1152,12 +1191,17 @@ describe('HeadlessGameClient.getAvailableActions() — 被动 distribute pending
   it('贯石斧/select:候选不足 minTotal 时不生成 distribute(只 skip)', () => {
     const hgc = new HeadlessGameClient('ws://localhost:0');
     (hgc as unknown as { _seatIndex: number })._seatIndex = 0;
-    const hand: Card[] = [{ id: 'x1', name: '桃', suit: '♥', color: '红', rank: '3', type: '基本牌' }];
+    const hand: Card[] = [
+      { id: 'x1', name: '桃', suit: '♥', color: '红', rank: '3', type: '基本牌' },
+    ];
     const view = makeView3(0, '出牌', hand);
     view.pending = {
       type: 'awaits',
-      atom: { type: '请求回应', requestType: '贯石斧/select', target: 0 } as GameView['pending'] extends infer P
-        ? P extends { atom: infer A } ? A : never : never,
+      atom: {
+        type: '请求回应',
+        requestType: '贯石斧/select',
+        target: 0,
+      } as GameView['pending'] extends infer P ? (P extends { atom: infer A } ? A : never) : never,
       prompt: {
         type: 'distribute',
         title: '贯石斧:选择 2 张牌弃置强命(不选则不发动)',
@@ -1309,7 +1353,9 @@ describe('enumerateAvailableActions:非 useCard 型主动技', () => {
   });
 
   it('与出牌/分配枚举并存不冲突', () => {
-    const hand: Card[] = [{ id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' }];
+    const hand: Card[] = [
+      { id: 'k1', name: '杀', suit: '♠', color: '黑', rank: '7', type: '基本牌' },
+    ];
     const actions = enumerateAvailableActions(makeView(0, '出牌', hand), 0, [
       killUseAction,
       kurouUseAction,
@@ -1495,5 +1541,78 @@ describe('enumerateAvailableActions:转化技回应窗口', () => {
     expect(resp).toHaveLength(1);
     expect(resp[0].message.skillId).toBe('杀');
     expect(resp[0].message.params.cardId).toBe('c1#武圣');
+  });
+
+  // 回归:多卡转化技同样要能「当杀打出」——决斗/南蛮入侵 的 询问杀 窗口里,
+  // 主 action 必须是 杀.respond(无目标),而非 杀.use。
+  // 旧实现多卡分支整段缺少回应路径 → 引擎 validate 拒「不是你的回合」,
+  // 丈八蛇矛/界父魂 无法用两张牌代杀回应(浏览器 handleTransformPlay 有 respond 分支,
+  // 只有无头/AI 客户端整类不可用)。
+  const zhangbaRespondTransform: SkillActionDef = {
+    skillId: '丈八蛇矛',
+    ownerId: 0,
+    actionType: 'transform',
+    label: '丈八蛇矛',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '选择 2 张手牌当杀使用',
+      cardFilter: { filter: () => true, min: 2, max: 2 },
+      targetFilter: { min: 1, max: 1 },
+    },
+    transform: (c: Card) => ({ name: '杀', sourceCardId: c.id, fromSkill: '丈八蛇矛' }),
+    activeWhen: (ctx) => {
+      const slot = ctx.view.pending;
+      if (!slot) return false;
+      if ((slot.atom as { type: string }).type !== '询问杀') return false;
+      if (slot.target !== ctx.perspectiveIdx) return false;
+      return (ctx.view.players[ctx.perspectiveIdx]?.hand?.length ?? 0) >= 2;
+    },
+  };
+
+  /** 被要求打出杀 → 询问杀 的 view(手牌由调用方给)。 */
+  function askKillView(hand: Card[]): GameView {
+    const view = makeView(0, '出牌', hand, 1);
+    view.pending = {
+      type: 'awaits',
+      atom: { type: '询问杀', target: 0, source: 1 } as never,
+      prompt: {
+        type: 'useCard',
+        title: '请打出一张杀',
+        cardFilter: { filter: (c: Card) => c.name === '杀', min: 1, max: 1 },
+      },
+      target: 0,
+      isBlocking: true,
+      totalMs: 50000,
+    };
+    return view;
+  }
+
+  it('询问杀 + 丈八蛇矛(2 张手牌当杀) → 生成 杀.respond + preceding cardIds', () => {
+    const a: Card = { id: 'a1', name: '闪', suit: '♥', color: '红', rank: '3', type: '基本牌' };
+    const b: Card = { id: 'b1', name: '桃', suit: '♦', color: '红', rank: '4', type: '基本牌' };
+    const actions = enumerateAvailableActions(askKillView([a, b]), 0, [zhangbaRespondTransform]);
+    const tf = actions.filter((x) => x.category === 'transform');
+    expect(tf).toHaveLength(1);
+    expect(tf[0].message.skillId).toBe('杀');
+    expect(tf[0].message.actionType).toBe('respond');
+    expect(tf[0].message.params.cardId).toBe('a1#b1#丈八蛇矛');
+    expect(tf[0].message.preceding).toEqual([
+      { skillId: '丈八蛇矛', actionType: 'transform', params: { cardIds: ['a1', 'b1'] } },
+    ]);
+    // 回应路径无目标
+    expect(tf[0].validTargets).toEqual([]);
+  });
+
+  it('询问杀 + 乱击(2 张同花色 → 万箭齐发) → 不生成回应动作(产出牌非请求牌)', () => {
+    const s1: Card = { id: 's1', name: '杀', suit: '♠', color: '黑', rank: '5', type: '基本牌' };
+    const s2: Card = { id: 's2', name: '闪', suit: '♠', color: '黑', rank: '7', type: '基本牌' };
+    const luanjiRespond: SkillActionDef = {
+      ...zhangbaRespondTransform,
+      skillId: '乱击',
+      label: '乱击',
+      transform: (c: Card) => ({ name: '万箭齐发', sourceCardId: c.id, fromSkill: '乱击' }),
+    };
+    const actions = enumerateAvailableActions(askKillView([s1, s2]), 0, [luanjiRespond]);
+    expect(actions.filter((x) => x.category === 'transform')).toHaveLength(0);
   });
 });

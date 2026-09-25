@@ -173,12 +173,51 @@ function enumerateTransformActions(
       // preceding transform 携带 cardIds=[id1,id2];agent 仅需补 targets。
       // (回归 yrjQ7X:旧实现只生成 params={} 的描述性 action + 空 validTargets,
       //  agent 无法构造合法 preceding/影子 cardId → 丈八蛇矛完全不可用。)
+      const matchingCards = me.hand.filter(filter);
+
+      // 回应路径(被询问杀 / 请求回应 杀/respondKill):两张牌当【杀】打出,无目标,
+      // 主 action = 杀.respond。与单卡分支同构——旧实现整段缺少回应路径,多卡分支
+      // 无条件发 use → 引擎 validate 拒「不是你的回合」,丈八蛇矛/界父魂 在
+      // 南蛮入侵/决斗 的询问杀窗口里拿不到任何动作(浏览器 handleTransformPlay 有
+      // respond 分支,只有无头/AI 客户端整类不可用)。
+      if (isRespondCtx) {
+        for (let i = 0; i < matchingCards.length; i++) {
+          for (let j = i + 1; j < matchingCards.length; j++) {
+            const c1 = matchingCards[i];
+            const c2 = matchingCards[j];
+            const wrapperName = action.transform!(c1).name;
+            if (wrapperName !== pendingRequestedName) continue; // 产出牌名 = 请求牌名时可用
+            const shadowCardId = `${c1.id}#${c2.id}#${action.skillId}`;
+            const desc = `${c1.suit}${c1.rank}+${c2.suit}${c2.rank}`;
+            result.push({
+              description: `${action.skillId}转化【${wrapperName}】(${desc})打出`,
+              message: {
+                skillId: wrapperName,
+                actionType: 'respond',
+                ownerId: seatIndex,
+                params: { cardId: shadowCardId },
+                preceding: [
+                  {
+                    skillId: action.skillId,
+                    actionType: action.actionType,
+                    params: { cardIds: [c1.id, c2.id] },
+                  },
+                ],
+                baseSeq: 0,
+              },
+              validTargets: [],
+              category: 'transform',
+            });
+          }
+        }
+        continue;
+      }
+
       const targetFilter = getTargetFilter(action.prompt);
       const rules = derivePlayRules(targetFilter, getSelfTarget(action.prompt));
       const validTargets = computeValidTargets(view, seatIndex, targetFilter, rules);
       // 需要目标但无合法目标(如距离不够)→ 跳过
       if (rules.needsTarget && !rules.selfTarget && validTargets.length === 0) continue;
-      const matchingCards = me.hand.filter(filter);
       // 产出牌名由 transform 回调决定(与单卡分支同判据):丈八蛇矛 → 杀,乱击/界乱击 → 万箭齐发。
       // 硬编码 '杀' 会让非杀产出(乱击族)的主 action 恒为 杀.use,引擎读影子卡名(万箭齐发)
       // validate 恒拒「不是杀」→ 该转化技在无头/AI 客户端整类不可用。

@@ -9,7 +9,11 @@
 // 从而锁死「客户端构造的 id == 引擎创建的 id」这条端到端契约。
 import { describe, it, expect, beforeEach } from 'vitest';
 import { enumerateAvailableActions } from '../../src/client/headless/availableActions';
-import { registerSkillActions, clearRegistry, getActionsForPlayer } from '../../src/client/skillActionRegistry';
+import {
+  registerSkillActions,
+  clearRegistry,
+  getActionsForPlayer,
+} from '../../src/client/skillActionRegistry';
 import { buildView, dispatch } from '../../src/engine/index';
 import { registerSkillsFromState } from '../../src/engine/index';
 import { createGameState, suitColor } from '../../src/engine/types';
@@ -71,10 +75,7 @@ describe('客户端枚举的转化技 action 引擎可接受(影子 id 约定)',
   it('界武圣:枚举出的红牌转化杀 action 被接受', async () => {
     const red = mkCard('r1', '闪', '♥', '5');
     const { state, actions } = await enumerateTransforms({
-      players: [
-        mkPlayer(0, 'P0', ['r1'], ['界武圣', '杀', '回合管理']),
-        mkPlayer(1, 'P1', [], []),
-      ],
+      players: [mkPlayer(0, 'P0', ['r1'], ['界武圣', '杀', '回合管理']), mkPlayer(1, 'P1', [], [])],
       cardMap: { r1: red },
       seat: 0,
     });
@@ -96,10 +97,7 @@ describe('客户端枚举的转化技 action 引擎可接受(影子 id 约定)',
   it('界疠火:枚举出的非火杀转化 action 被接受', async () => {
     const kill = mkCard('k1', '杀', '♠', '7');
     const { state, actions } = await enumerateTransforms({
-      players: [
-        mkPlayer(0, 'P0', ['k1'], ['界疠火', '杀', '回合管理']),
-        mkPlayer(1, 'P1', [], []),
-      ],
+      players: [mkPlayer(0, 'P0', ['k1'], ['界疠火', '杀', '回合管理']), mkPlayer(1, 'P1', [], [])],
       cardMap: { k1: kill },
       seat: 0,
     });
@@ -120,10 +118,7 @@ describe('客户端枚举的转化技 action 引擎可接受(影子 id 约定)',
   it('界父魂(granted 武圣):枚举出的单张红牌转化杀 action 被接受', async () => {
     const red = mkCard('r1', '闪', '♥', '5');
     const { state } = await enumerateTransforms({
-      players: [
-        mkPlayer(0, 'P0', ['r1'], ['界父魂', '杀', '回合管理']),
-        mkPlayer(1, 'P1', [], []),
-      ],
+      players: [mkPlayer(0, 'P0', ['r1'], ['界父魂', '杀', '回合管理']), mkPlayer(1, 'P1', [], [])],
       cardMap: { r1: red },
       seat: 0,
     });
@@ -225,5 +220,69 @@ describe('客户端枚举的转化技 action 引擎可接受(影子 id 约定)',
       baseSeq: state.seq,
     });
     expect(result.accepted, '客户端枚举的界乱击转化必须被引擎接受').toBe(true);
+  });
+});
+
+// ─── 多卡转化技的回应路径(决斗/南蛮入侵 的 询问杀 窗口) ───
+// 契约:无头客户端在回应窗口里枚举出的多卡转化动作,主 action 必须是 <请求牌名>.respond,
+// 且引擎 dispatch 必须接受。旧实现多卡分支整段缺少回应路径 → 枚举出 杀.use,
+// 引擎 validate 恒拒「不是你的回合」,丈八蛇矛/界父魂 无法用两张牌代杀回应。
+describe('多卡转化技回应路径:客户端枚举 → 引擎 dispatch', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('丈八蛇矛:询问杀窗口中枚举出的 杀.respond 被引擎接受', async () => {
+    const a = mkCard('a1', '闪', '♥', '3');
+    const b = mkCard('b1', '桃', '♦', '4');
+    const duel = mkCard('du1', '决斗', '♣', '10');
+    const zhangba: Card = {
+      id: 'zb1',
+      name: '丈八蛇矛',
+      suit: '♠',
+      color: '黑',
+      rank: '12',
+      type: '装备牌',
+    };
+    const p0 = mkPlayer(0, 'P0', ['a1', 'b1'], ['丈八蛇矛', '杀', '回合管理']);
+    p0.equipment = { 武器: 'zb1' };
+    const state = createGameState({
+      players: [p0, mkPlayer(1, 'P1', ['du1'], ['决斗', '杀', '回合管理'])],
+      cardMap: { a1: a, b1: b, du1: duel, zb1: zhangba },
+      currentPlayerIndex: 1,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.zones = { deck: [], discardPile: [], processing: [] };
+    await registerSkillsFromState(state);
+    clearRegistry();
+    for (const p of state.players) await registerSkillActions(p.index, p.skills);
+
+    // P1 对 P0 使用决斗 → P0 被询问杀
+    const duelUse = await dispatch(state, {
+      skillId: '决斗',
+      actionType: 'use',
+      ownerId: 1,
+      params: { cardId: 'du1', targets: [0] },
+      baseSeq: state.seq,
+    });
+    expect(duelUse.accepted, 'P1 的决斗应被接受').toBe(true);
+    await duelUse.settle;
+
+    const view = buildView(state, 0);
+    expect((view.pending?.atom as { type?: string }).type).toBe('询问杀');
+    const actions = enumerateAvailableActions(view, 0, getActionsForPlayer(0));
+    const transform = actions.find((x) => x.category === 'transform');
+    expect(transform, '客户端应枚举出丈八蛇矛的代杀回应').toBeDefined();
+    expect(transform!.message.skillId).toBe('杀');
+    expect(transform!.message.actionType).toBe('respond');
+    expect(transform!.message.params.cardId).toBe('a1#b1#丈八蛇矛');
+
+    const res = await dispatch(state, {
+      ...transform!.message,
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(res.accepted, '客户端枚举的丈八蛇矛代杀回应必须被引擎接受').toBe(true);
   });
 });
