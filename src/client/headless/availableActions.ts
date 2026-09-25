@@ -431,17 +431,30 @@ function enumerateAltActions(
     const alts = findAltActionsForCard(skillActions, card, primary);
     for (const action of alts) {
       if (!isActiveAction(action, ctx)) continue;
+      const targetFilter = getTargetFilter(action.prompt);
+      const rules = derivePlayRules(targetFilter, getSelfTarget(action.prompt));
+      // 替代出法也要按自身 prompt 派生目标规则(与主出牌分支同源):
+      // 义绝/界断粮 等 useCardAndTarget 型替代出法需要目标,旧实现固定
+      // validTargets=[] 且 params 只有 cardId → AI 提交缺目标,引擎恒拒
+      // 「需要选择目标」,整类替代出法在无头/AI 客户端不可用。
+      const validTargets = computeValidTargets(view, seatIndex, targetFilter, rules);
+      if (rules.needsTarget && !rules.selfTarget && validTargets.length === 0) continue;
       const cardDesc = `${card.suit}${card.rank}`;
+      const sampleParams = rules.selfTarget
+        ? buildPlayParams(view.players, seatIndex, card, rules, null, null)
+        : rules.needsTarget && !rules.hasSlots
+          ? { cardId: card.id }
+          : buildPlayParams(view.players, seatIndex, card, rules, null, null);
       result.push({
         description: `${action.label}(${cardDesc})`,
         message: {
           skillId: action.skillId,
           actionType: action.actionType,
           ownerId: seatIndex,
-          params: { cardId: card.id },
+          params: sampleParams ?? { cardId: card.id },
           baseSeq: 0,
         },
-        validTargets: [],
+        validTargets,
         category: 'play',
       });
     }

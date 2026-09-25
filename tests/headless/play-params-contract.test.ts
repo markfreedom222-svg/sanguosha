@@ -382,3 +382,60 @@ describe('客户端枚举的目标必须被引擎接受', () => {
     expect(res.accepted, `${skillId} 枚举出的蜀势力目标应被接受`).toBe(true);
   });
 });
+
+// ─── 替代出法(alt action)的目标派生 ───
+// 同一张牌可能有多个 use action(主出法 + 替代出法:义绝弃任意牌、界断粮黑牌当兵粮寸断…)。
+// 替代出法若是 useCardAndTarget,枚举必须按它自己的 prompt 派生合法目标;旧实现固定
+// validTargets=[] 且 params 只有 cardId → AI 提交缺目标,引擎恒拒「需要选择目标」。
+describe('替代出法(alt action)的枚举必须带合法目标', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('义绝(弃一张牌+选目标):替代出法带合法目标且被接受', async () => {
+    const setup = () => ({
+      players: [
+        // 杀 的主出法是 杀.use → 义绝 走替代出法分支
+        mkPlayer(0, 'P0', ['k1'], ['义绝', '杀', '回合管理']),
+        mkPlayer(1, 'P1', ['x1'], ['杀', '回合管理']),
+      ],
+      cardMap: {
+        k1: mkCard('k1', '杀', '♠', '5'),
+        x1: mkCard('x1', '杀', '♣', '3'),
+      },
+    });
+    const build = async () => {
+      const { players, cardMap } = setup();
+      const state: GameState = createGameState({
+        players,
+        cardMap,
+        currentPlayerIndex: 0,
+        phase: '出牌',
+        turn: { round: 1, phase: '出牌', vars: {} },
+      });
+      state.zones = { deck: [], discardPile: [], processing: [] };
+      await registerSkillsFromState(state);
+      clearRegistry();
+      for (const p of state.players) await registerSkillActions(p.index, p.skills);
+      return state;
+    };
+
+    const state0 = await build();
+    const actions = enumerateAvailableActions(
+      buildView(state0, 0),
+      0,
+      getActionsForPlayer(0),
+    ).filter((a) => a.message.skillId === '义绝');
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions[0].validTargets.length, '义绝替代出法必须带合法目标').toBeGreaterThan(0);
+
+    const state = await build();
+    const res = await dispatch(state, {
+      ...actions[0].message,
+      params: { ...actions[0].message.params, targets: [actions[0].validTargets[0]] },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(res.accepted, '义绝替代出法(补 targets 后)必须被引擎接受').toBe(true);
+  });
+});
