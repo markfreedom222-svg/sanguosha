@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — 2026-09-26
+
+### Fixed — 客户端枚举/构造与引擎判据不同源(9 类「整技/整方向在真实客户端不可用」)
+
+本轮以「客户端枚举 → 原样 dispatch」的契约扫描(tmp/sweep.ts,覆盖全部武将/装备技能 ×
+出牌/询问闪/询问杀/濒死/无懈 五个上下文)定位并修复同一根因的 9 类问题:引擎支持某条路径,
+但浏览器 `usePlayInteraction` 或无头 `availableActions` 的枚举/参数构造与引擎 validate 不同源,
+表现为「按钮点了没反应」「AI 反复挑同一非法动作空转」,而技能测试手写另一种形状照样绿。
+
+#### Fixed
+
+- **龙胆转化**:validate 硬性要求 `params.to`,真实客户端只发 `cardId` → 方向改由原卡名推导。
+- **多卡转化回应路径**:`enumerateTransformActions` 多卡分支缺 respond 分支,丈八蛇矛/界父魂
+  在决斗/南蛮入侵的询问杀窗口枚举出 `杀.use` 恒拒 → 补 `杀.respond` + preceding。
+- **界强袭代价变体**:`paramVariants` 照抄标版 `cost:'hp'`,界版 validate 只认 `'damage'` →
+  改为同源取值(标签同步为「受到1点伤害」)。
+- **多卡转化组合约束**:乱击/界乱击 枚举全部 C(n,2) 组合 → `CardFilter.comboFilter` 声明
+  「两张同花色」,无头枚举过滤组合、浏览器拦提交。
+- **目标形状归一**:`dispatch` 边界补齐 `target ⇄ targets`(自带 use/respond action 的技能拿不到
+  `使用牌` skill 的兼容层)→ 断粮/界断粮/审时/驱虎/天义/界巧说/界陷阵/天香/乱武/界火计 恢复可用。
+- **枚举侧目标过滤**:挑衅/界挑衅 的 `targetFilter` 是占位 `return true`(改用 `viewCanAttack`)、
+  激将/界激将 的 `choosePlayer` 漏 `filter`(补「其他蜀势力角色」)。
+- **替代出法枚举**:`enumerateAltActions` 固定 `validTargets=[]` 且不带目标 → 按替代 action
+  自身 prompt 派生目标(义绝 等需目标的替代出法恢复可用)。
+- **转化方向/目标语义**:浏览器 `wrapperName` 被手牌顺序钉死、目标语义沿用 transform 自身
+  `targetFilter` → 方向跟随选牌(`transformWrapperName`)、目标取产出牌的 use action
+  (酒无目标 / 桃 selfTarget),产出牌不可用则不枚举。
+- **界渐营/界矫诏 声明型转化**:`outputName` 无任何客户端提供 → 每个声明牌名一个 action
+  (`transform:杀`…),`transform` 回调固定返回该牌名,前后端一一对应。
+
+#### 测试
+
+- 新增 `tests/headless/play-params-contract.test.ts`(客户端构造的 params/目标必须被引擎接受)
+  并扩充 `tests/headless/transform-action-accepted.test.ts`;每类修复都带「修复前红」的定点用例,
+  浏览器侧回归追加到 `tests/client/usePlayInteraction.test.ts`(转化方向/组合约束/自目标语义)。
+- 契约与判据写入 `CLAUDE.md`「关键架构决策」(枚举-引擎一致性 / 目标形状归一 / 转化产出牌 /
+  声明型转化 actionType),防止同类复发。
+
 ## [Unreleased] — 2026-08-16
 
 ### Fixed — 朱雀羽扇使用普通杀时增加「是否发动」询问
@@ -9,12 +47,14 @@ All notable changes to this project will be documented in this file.
 原先朱雀羽扇只有主动转化路径：必须先点技能栏的【朱雀羽扇】按钮、选普通杀、再选目标（preceding transform + 杀.use 组合 action）。玩家直接点杀使用时无任何提示，与 OL 官方「使用普通杀时询问是否发动」的行为不符。现增加使用时询问主路径：owner 使用普通【杀】时弹 confirm「朱雀羽扇：是否发动，将此【杀】改为火【杀】？」，确认后该牌 damageType 临时改为火焰——检测有效性（藤甲穿透）、伤害属性（火焰+1）、铁索连环传导均经 cardMap.damageType 生效。牌离开处理区（收尾入弃牌堆/被技能回收）或技能卸载（换装/死亡）时还原原属性，防止牌堆真源被永久污染。客户端零改动：confirm 型 pending 由 AwaitingPrompt 通用渲染，skillId 按 requestType `朱雀羽扇/confirm` 首段路由。
 
 #### Changed
+
 - **新增「使用时」after-hook 询问**（`src/engine/skills/朱雀羽扇.ts`）：仅普通杀触发（火杀/雷杀/transform 影子不询问，避免双重询问）；借刀杀人/激将等 forced 使用照常询问；打出（决斗/南蛮回应）不走 runUseFlow、属性无机制意义，不询问。默认不发动、超时 10s 不回应视为不发动。
 - **respond action + onMount UI 定义**：requestType=`朱雀羽扇/confirm`，与麒麟弓/雌雄双股剑同款 confirm 模式。
 - **onInit 清理改造**：全部注册收集 unloader；卸载时兜底扫描还原所有仍被临时改性的牌。
 - **transform 按钮路径保留**：供「使用前转化」场景（如界疠火+羽扇先转火杀才可多指定一个目标）。
 
 #### 测试
+
 - **`tests/skill-tests/朱雀羽扇.test.ts` 追加 3 例**（归入现有 describe）：发动→火焰伤害穿透藤甲且+1、结算后属性还原（含 view 层 pending 弹窗断言）；不发动→普通杀被藤甲无效 0 伤害；真实火杀不弹询问。
 
 ## [Unreleased] — 2026-08-07
@@ -24,12 +64,14 @@ All notable changes to this project will be documented in this file.
 原交互流程需连过 4 个弹窗：confirm（是否发动）→ choosePlayer（弹窗选目标）→ useCard（弹窗选牌）→ chooseOption（弹窗选弃置/置装备），且只能选手牌、无法把自己装备区的装备交给目标。改为 distribute/allocate 单步交互：点【界结姻】按钮直接进入分配面板，金色高亮选一张手牌或自己装备区的装备，再点击男性角色头像定为目标，最后点「确定」提交——全程无弹窗。
 
 #### Changed
+
 - **`界结姻` use action 改为 `distribute`/`allocate` prompt**（`src/engine/skills/界结姻.ts`）：删除 confirm use prompt 与 target/card/cost 三段顺序 `请求回应`（respond action 整体移除），改为单步 use action 直接接收 `allocation=[{target, cardIds:[id]}]`；`source:'handAndEquip'` 让手牌+装备区都纳入可选候选，`targetFilter` 圈定存活男性。前端 distribute 面板、装备区候选高亮、点目标定标均为既有能力，无需前端改动。
 - **代价改为按牌类型自动判定**（消除 chooseOption 弹窗）：所选为装备牌（无论来自手牌还是自己装备区）→ 置入目标对应栏位（可替换原装备；若来自自己装备区先卸下再移交）；所选为非装备手牌 → 弃置。
 - **新增装备区来源置入目标**（核心诉求）：选自己装备区的装备会先移除其技能、卸下回手牌，再置入目标的空/占用槽位（占用则旧装备入弃牌堆）。
 - **限一次消耗时机优化**：标记改在 use 提交后的 execute 开头设置——玩家在分配面板点「取消」未提交则不消耗限一次（原先中途放弃询问仍算已用）。
 
 #### 测试
+
 - **`tests/skill-tests/界结姻.test.ts` 重写**为单步 use 流程（13 例）：弃手牌双向效果、置装备（手牌/装备区两种来源）含替换原装备、体力相等裁定、限一次/非回合/空手空装备/无男性/女性目标/非法牌拒绝、allocation 格式兼容；删除已不存在的顺序 respond 用例与 pending candidates 契约用例。
 
 ## [Unreleased] — 2026-08-07
@@ -39,11 +81,12 @@ All notable changes to this project will be documented in this file.
 ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 persisted.state”——该设计被推翻。根因：JSON 反序列化得到的 state 快照**无法恢复程序内存状态**，下列运行时注册全部不可序列化（`sanitizeState` 持久化时已清除）：skill 实例（`ActionEntry` 闭包）、系统规则全局 hooks、每个玩家的选将/弃牌 respond actions、酒/延时锦囊/连环传导全局 hooks、pending slot 的 resolve/pause/定时器。游戏继续运行必须依赖这些（dispatch 查 action 表、applyAtom 跑 hooks、respond 定位 slot），直接接管快照会导致全部缺失。正确流程是 `create + bootstrap + restore` 三段式（bootstrap 重建内存注册、restore 重放 actionLog），确定性由 `config.seed = state.rngSeed` 保证。
 
 #### 文档纠正
+
 - **ADR 0027 决策7**（`docs/decisions/0027-create-engine-top-level-functions.md`）：从“不调 bootstrap”改为“必须走 create + bootstrap + restore”，加修订记录列举不可序列化的内存状态，并说明重放 settle 同步机制。同步纠正问题 3、决策 2“为什么这样拆”、后果“正面”、Phase 4 步骤、restore-from-log 代码示例。
 - **选将交互设计 §8.3**（`docs/design/选将交互设计.md`）：从“restore 不调 bootstrap、不注册选将 respond”改为“bootstrap 注册选将 respond + 重跑开局，restore 重放选将 respond”。
 - **代码注释**（`src/engine/index.ts`、`src/server/persistence.ts`）：删除“restore 路径不调 bootstrap / 直接接管 state”等过时描述，改为说明 restore 必须靠 bootstrap 重建内存状态。
 
-历史计划文档（`docs/superpowers/plans`、`docs/superpowers/specs` 下的 2026-06-12-*）是历史实施快照，保留原样不改写历史。
+历史计划文档（`docs/superpowers/plans`、`docs/superpowers/specs` 下的 2026-06-12-\*）是历史实施快照，保留原样不改写历史。
 
 ## [Unreleased] — 2026-08-07
 
@@ -52,6 +95,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 全部 102 张武将立绘统一为 750×950(宽高比 15:19)，但座位卡(其他玩家)与大卡(自己面板)此前用 `object-fit:cover` 填充横向比例容器——座位卡宽矮被横向裁切、大卡 260×200 被裁掉约 40%，武将头部/下半身经常出框。现将两类卡片本身设为 `aspect-ratio: 15/19`，与立绘同比例，cover 退化为无裁切。
 
 #### Changed
+
 - **座位卡(`seatCard`)改竖向定比**:宽度固定 200px、`aspect-ratio: 15/19`(渲染 200×253)，去掉 `min-width/max-width` 弹性；内容层(`seatCardContent`)由 `position:relative;height:100%` 改为 `position:absolute;inset:0`，立绘填满卡片、文字浮层不再撑高容器。(`src/client/components/PlayerSeatView.tsx`)
 - **大卡(`playerCardLarge`)改定比**:`flex: 0 0 260px` 改为 `flex: 0 0 auto;aspect-ratio: 15/19`，高度跟随底栏(`align-self:stretch`,底栏 200px → 渲染 158×200)，宽度由比例推导。(`src/client/components/gameViewStyles/actionBar.ts`)
 
@@ -64,9 +108,11 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 现有测试 `charselect-pending-isolation.test.ts` 等已用 `sleep` 轮询同步该时序，但生产路径 `restore` 从未处理，且无任何端到端测试覆盖 `session.restoreState`（`persistence.test.ts` 只测 pendingSlots Map 转换）——这是 bug 滑过的直接原因。
 
 #### Changed
+
 - **`engine.restore` 重放加 settle 同步**（根因）：respond 类 actionType（`选将`/`respond`/`skip`）重放前 `waitForResponsiveSlot` 轮询等目标 pending slot 出现；每条 action dispatch 后 `settleExecute` 等 `state.seq` 连续 3 次采样稳定（fire-and-forget execute 已推进到下一挂起点）。restore 是启动恢复路径（非热路径），轮询开销可接受。(`src/engine/index.ts`)
 
 #### 测试
+
 - **新建 `tests/integration/restore-replay.test.ts`**（2 例）：
   1. engine 层——第一局完整选将得到 actionLog，第二局 `bootstrap + restore` 重放，断言选将完成、武将与第一局确定性一致、不卡在选将询问 pending。
   2. session 层端到端（模拟服务端重启）——`session1` 开局选将 → `session2.restoreState(state, actionLog)` 重放，断言选将完成、武将一致、已推进到出牌阶段、pending 是出牌窗口而非选将询问。
@@ -78,9 +124,11 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 服务端重启恢复中盘对局时 OOM 崩溃（vite 日志：恢复 1 个持久化房间时 4GB 堆耗尽）。根因：`fireTimeout`（超时不出闪→扣血、弃牌、阶段结束等）不记录在 actionLog——`_fireTimeoutNow` 调 `onTimeout` 内部的 applyAtom 推进 state，但不经过 dispatch/logAction。`engine.restore` 重放出杀 use 后，fire-and-forget execute 创建询问闪 pending（isBlocking），旧实现的 `settleExecute`（等 seq 稳定）在该 pending 创建后过早返回（seq 暂时稳定），不 fireTimeout 它 → 每条出杀创建一个永不 resolve 的询问闪 slot + 挂起的 execute promise → 中盘对局（大量出牌+超时）堆积 → OOM。
 
 #### Changed
+
 - **`engine.restore` 重放加 fireTimeout 推进**（根因）：dispatch 后 `waitForPendingOrDone` 等 execute 创建 pending 或跑完。isBlocking pending（询问闪/请求回应等）若不被剩余 actionLog respond（说明原对局中被超时处理），主动 `slot._fireTimeoutNow` fireTimeout 推进（只触发该 slot，不误伤出牌窗口等非阻塞 pending），之后 `waitForSeqStable` 等 execute resume 完成。重放完毕后 fireTimeout 残留 isBlocking pending。`settleExecute` 拆为 `waitForPendingOrDone` + `waitForSeqStable`，`RESPONSIVE_ACTION_TYPES` 加 `confirm`。(`src/engine/index.ts`)
 
 #### 测试
+
 - **`tests/integration/restore-replay.test.ts`** 新增第 3 例：第一局选将+出杀+fireTimeout（模拟超时），第二局 restore 重放，断言 seq/health 完全一致 + 无残留 isBlocking pending（防 OOM）。
 
 ## [Unreleased] — 2026-08-07
@@ -90,10 +138,12 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 出牌阶段(自由出牌窗口)下,手牌中的【无懈可击】、【闪】等纯回应牌仍显示为可点击高亮,点击后会进入选中态(出现「取消选择」按钮),但选中后无「出牌」按钮——实际打不出去,误导玩家。根因:`GameView` 的 `canPlay` 判定为 `isMyTurn && canOperate && !playBlocked`,而 `playBlocked = !!useAction && !isActiveAction(useAction)`:闪/无懈可击的 `timing='生效前'`(纯回应牌),「使用牌」`onMount` 跳过不为它们注册 use action → `useAction=undefined` → `playBlocked=false` → `canPlay=true`,被误判为可主动打出。headless/AI 动作枚举 `enumeratePlayActions` 用 `if (!action) continue` 正确跳过这类牌,前端 UI 与之不一致。
 
 #### Changed
+
 - **新增 `hasUseEntry(card)`**(根因):基于 CardEffect 注册表(静态、eager load)判断一张牌是否有主动 use 入口——`timing='生效前'` 的闪/无懈可击无主动 use,其余牌(含未注册 card-effect 的装备牌)有。不依赖动态注册的 `skillActions`,在 `useSkillActions` 异步注册间隙也能给出稳定答案,避免手牌全灰闪烁。(`src/client/utils/gameViewHelpers.ts`)
 - **GameView `canPlay` 改用 `hasUseEntry`**:`canPlay` 改为要求 `hasUseEntry(card) && (!useAction || isActiveAction(useAction))`。`useAction=undefined`(注册间隙)时乐观放行,有匹配 use action 时校验激活——消除「无 use action 的牌被误判为可点击」与「注册间隙手牌闪烁」两个问题。(`src/client/components/GameView.tsx`)
 
 #### 测试
+
 - **回归测试**:`tests/integration/gameview-equipment-play.test.tsx` 新增「无 use action 的牌(闪/无懈可击)在出牌阶段不可选」——点击无懈可击/闪不进入选中态(无「取消选择」按钮),对照点击杀正常选中并出现「出牌」按钮。
 
 ## [Unreleased] — 2026-08-07
@@ -108,6 +158,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 - **`奋激.test.ts`**：`equipment.weapon`→`equipment.武器`（§4 装备字段名中文），顺带修复一处预先存在的 TS 类型错误（`EquipSlot` 为 `'武器'|'防具'|'进攻马'|'防御马'|'宝物'`）。
 
 #### 审计结论（非违规，保持现状）
+
 - **306 处中文常量名 = 业务标识符**（`export const 吕蒙`/`export const 伤害结算开始时`/`export const 赤兔` 等）：常量名即武将名/atom 类型/卡牌名等业务标识符，改英文会退化为拼音（违反 §1 禁拼音）且割裂常量与业务字面量的对应，属刻意设计。
 - **拼音文件名**：无（CLAUDE.md 反例 `leiji.ts`/`bagua.ts` 已修复）。
 - **snake_case 标识符**：无。
@@ -129,15 +180,18 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 - 高分辨率底图(cards-ai 来源)用 `contain` 避免裁切变形,低分辨率官方底图用 `cover`。
 
 #### 验证(确定性 + 多模态)
+
 - **字节冲突校验**: 修正后 136 张全部独立字节、0 冲突、与 deck 真相源 1:1。
 - **多模态抽查**(sensenova-6.7): 杀 7♥/杀 4♠/火攻 Q♦/火攻 2♥(同牌名变体角标确不同)/大宛 K♠/方天画戟 Q♦/赤兔 5♥/的卢 5♣/朱雀羽扇 A♦ 角标全部正确,坐骑无变形。
 - 资源相关测试 25 passed。
 
 #### Changed
+
 - **重建 `public/packs/base/card/` 136 张手牌大图**(gitignored 本地资源)。
 - **新增 `scripts/build-official-cards.ts`**: 官方底图+程序角标合成脚本(替代会复现 bug 的 sync-cards-local + migrate-to-packs 链路)。底图缓存 `/tmp/qs_cards`。
 
 #### 备注
+
 - 调查结论:所有来源(BWIKI/QSanguosha/爱给网)均为「牌名级」一张图,无「每花色点数带角标」现成图包——这是三国杀官方设计(同牌名插画相同,角标由程序渲染),故角标必须程序绘制。
 
 ## [Unreleased] — 2026-08-07
@@ -174,14 +228,17 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 正确且完整分化的来源是 `gen-card.ts --all` 产出的 `public/cards-ai/`（逐张物理牌独立合成，角标与文件名一一对应，与 deck 真相源 1:1）。本次用其作为权威源重建 packs/base。
 
 #### 验证（确定性 + 多模态）
+
 - **字节冲突校验**：修正前 24 组「同图异花色点数」冲突（共波及全部 136 个牌面），修正后 0 冲突、136 个独立字节组、与 deck 1:1 精确对应、0 缺失 0 孤儿。优先采用此法而非纯视觉识别——视觉模型在 240px 缩略图上易混淆 ♣/♠、误读 4/7。
 - **多模态抽查**（sensenova-6.7）：cards-ai 源 6 张 + packs/base 修正后 6 张角标全部核对正确（火攻 Q♦ / 大宛 K♠ / 紫骍 K♦ / 赤兔 5♥ / 丈八蛇矛 Q♠ / 杀 7♥ / 桃 Q♦ / 闪 K♥ 等）。
 
 #### Changed
+
 - **重建 `public/packs/base/card/` 136 张手牌大图**（gitignored 本地资源）：从 `public/cards-ai/<sub>/<名>-<点>-<花色>.png`（1760×2368）缩放到 240×337，按 manifest 既有扩展名输出（基本牌 `.jpg` mozjpeg q82 / 装备锦囊 `.png` palette 压缩）。manifest.json 的 id/file 映射未改动。古锭刀 5.8MB 全分辨率泄漏随之修复（→33KB），card 目录 29MB→14MB。
 - **新增 `scripts/sync-cards-ai-to-packs.ts`**：固化 cards-ai→packs/base 的正确同步路径（此前缺失，只有按名折叠的 sync-cards-local + migrate-to-packs，是 bug 复现源）。`npx tsx scripts/sync-cards-ai-to-packs.ts [--dry-run]`。
 
 #### 备注
+
 - 资源缺失：本次确定性校验确认 deck 136 个牌面与磁盘文件 1:1，**无缺失资源**，无需下载补齐。
 - 多模态识别：本环境仅配置了 sensenova-6.7 视觉 provider；MiniMax-M3 未配置 key，未参与（确定性字节校验已提供比视觉更可靠的证据）。
 
@@ -192,9 +249,11 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 藤甲官方描述为「南蛮入侵/万箭齐发/普通杀对你无效；火焰伤害+1」，但实现错误地做成「普通伤害 -1」（挂在「受到伤害时」），导致装备藤甲者被普通杀时仍会询问闪、走完抵消流程后伤害被减为 0——观感即「装备藤甲被普通杀不该询问闪」。正确行为是普通杀/AOE 在「检测有效性」时机被无效（cancel），不询问闪/杀、不造成伤害、不触发被抵消（与仁王盾黑杀无效同构）。附带修复：雷杀此前被错误减为 0，现正常造成 1 点伤害（藤甲只防普通杀，属性杀穿透）。
 
 #### Changed
+
 - **藤甲改为「检测有效性」cancel + 「受到伤害时」火焰+1 双 hook**（根因）：新增「检测有效性」before-hook——目标为藤甲持有者且来源是普通杀（damageType 非火焰/雷电）/南蛮入侵/万箭齐发时 cancel，跳过该目标结算（不询问闪/杀、不伤害）。原「受到伤害时」hook 收窄为仅火焰伤害 +1。镜像仁王盾（cancel 黑杀）的实现方式。(`src/engine/skills/藤甲.ts`)
 
 #### 测试
+
 - **藤甲.test.ts**：「普通杀减为 0」用例改写为「普通杀对你无效 → 不询问闪、不扣血」；新增「南蛮入侵对你无效」「万箭齐发对你无效」「雷杀(雷电)穿透藤甲正常 1 点」三例。
 - **八卦阵.test.ts**：候选B（卧龙诸葛八阵+藤甲被普通杀）改写为「无效，不询问八阵/闪」。
 - 火杀传导相关测试（乱武/借刀/挑衅/激将及界系列）不受影响：火杀为属性杀不被 cancel，火焰 +1 保留。
@@ -214,7 +273,8 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 `npx tsc --noEmit` 存在 17 处(6 个文件)长期未处理的类型错误。逐个定位根因后全部修复。
 
 #### Changed
-- **鬼道/鬼才/界鬼道/界鬼才 (TS2367)**:`registerJudgeModifier` 的 handler 类型误用 `AtomAfterContext<AtomOfName<'判定'`>` 窄化 `ctx.atom.type` 为 `'判定'`,但运行时 ctx.atom 实际是「判定牌生效前」atom(由 judge-timing.ts 的 afterApply 调 runJudgeModifiers 从 atomStack 顶取出)。改为 `AtomAfterContext`(默认 Atom 全联合),`atom.type !== '判定牌生效前'` 比较不再报「无重叠」。(`src/engine/skill.ts`)
+
+- **鬼道/鬼才/界鬼道/界鬼才 (TS2367)**:`registerJudgeModifier` 的 handler 类型误用 `AtomAfterContext<AtomOfName<'判定'`>`窄化`ctx.atom.type`为`'判定'`,但运行时 ctx.atom 实际是「判定牌生效前」atom(由 judge-timing.ts 的 afterApply 调 runJudgeModifiers 从 atomStack 顶取出)。改为 `AtomAfterContext`(默认 Atom 全联合),`atom.type !== '判定牌生效前'` 比较不再报「无重叠」。(`src/engine/skill.ts`)
 - **viewMaintainer (TS2339)**:`ViewPlayer` 不含 `tags`/`judgeZone`/`vars`(这三个是 state player 的内部状态,不投影 GameView),深拷贝这三行是旧残留。删除。(`src/client/headless/viewMaintainer.ts`)
 - **选将 candidates 类型缺 baseId (TS2353)**:引擎 `flattenCharGroups` 运行时产出 `{ name, skills, baseId }`(开局.ts),但各处 candidates 类型声明漏了 `baseId`。给 `atom.ts` 选将询问/并行选将、`prompt.ts` ChooseCharacterPrompt、前端 OverlaysLayer/HeadlessGameClient/headless types/useCharSelect 共 8 处补 `baseId?: string`。(`src/engine/types/atom.ts`、`src/engine/types/prompt.ts`、`src/client/components/OverlaysLayer.tsx`、`src/client/headless/HeadlessGameClient.ts`、`src/client/headless/types.ts`、`src/client/hooks/useCharSelect.ts`)
 - **applyView-consistency.test (TS18048)**:`def.toViewEvents!(...)` 的 `!` 只断言方法存在不断言返回值,split 仍 `ViewEventSplit | undefined`。补返回值 `!`。(`tests/engine/applyView-consistency.test.ts`)
@@ -222,6 +282,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 - **系统规则.test makeCard (TS2554)**:`makeCard` 仅 4 参数,但调用方传了 5 个(含 `type='装备牌'`)。补可选 `type` 参数,与其他测试文件的 makeCard 一致。(`tests/skill-tests/系统规则.test.ts`)
 
 #### 验证
+
 - `npx tsc --noEmit`:0 错误(从 17 清零)
 - 改动相关 8 个测试文件:76 passed
 - 全量套件:401/402 passed(唯一失败 skillDisplay 为已知顺序敏感 flaky,单独重跑全过,与本修改无关)
@@ -229,6 +290,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 ### Fixed — 借刀杀人无法选择杀的目标、出牌无响应
 
 借刀杀人选中后玩家只能点选一个目标(借刀对象 A),无法点选杀的目标 B,但「出牌」按钮可点,点击后无任何响应。根因:借刀杀人 use action 的 `prompt.targetFilter` 仅声明 `{ min: 1, max: 1 }` 单目标,**未声明双目标 `slots`**。前端 `derivePlayRules` 据此判 `hasSlots=false`,把借刀杀人当单目标牌:
+
 - 玩家只能选 A,`playButtonState` 选了 A 即 `canPlay=true`
 - `buildPlayParams` 走单目标路径产出 `{ cardId, targets: [A] }`,缺 `killTarget`
 - 后端 `canUseBorrowedSword` 读不到 killTarget → 返回 `'killTarget required'` 静默拒绝
@@ -239,10 +301,12 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 同步修正一个规则错误:借刀杀人允许「借别人的刀杀自己」(killTarget=发起者),原实现却禁止。删除 `canUseBorrowedSword` 中 `killTargetIdx === ownerId` 的拒绝,前端 B 槽位 filter 也不再排除发起者自己。
 
 #### Changed
+
 - **借刀杀人 use action prompt 补双目标 slots**:A 槽位=持有武器的其他存活角色(`equipment['武器']` 存在),B 槽位=任意存活角色(含发起者自己,仅排除已选 A)。filter 仅为前端 UI 置灰提示,权威校验仍在后端 `canUseBorrowedSword`。(`src/engine/card-effects/借刀杀人.ts`)
 - **`canUseBorrowedSword` 允许 killTarget=发起者**:删除 `killTargetIdx === ownerId` 的拒绝(killTarget 可为发起者自己);仅保留 `killTargetIdx === targetIdx`(B≠A)禁令。(`src/engine/card-effects/借刀杀人.ts`)
 
 #### 测试
+
 - **回归测试**:`tests/skill-tests/借刀杀人.test.ts` 新增——
   1. 断言 `getCardEffect('借刀杀人').prompt.targetFilter.slots` 存在且长度为 2,A 槽位 filter 拒绝徒手/自己、B 槽位 filter 接受发起者自己(借刀杀自己)、拒绝已选 A。
   2. 原「killTarget=发起者被拒绝」负面用例改写为正面用例:killTarget=P1 自己 → P2 出杀 → P1 被询问闪 → 不闪扣 1 血。删除 slots 或恢复禁令即失败。
@@ -254,9 +318,11 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 根因:寒冰剑等装备的 respond-confirm action 无 `activeWhen`,`isActiveAction` 回退到 `defaultPlayActive`(自己回合+出牌阶段+无阻塞 pending=制衡场景)判为 true。`EquipColumn` 据此把装备当作「可发动技能」,`handleClick` 优先走 `onSkillAction` 弹 confirm,而非 distribute 选牌。
 
 #### Changed
+
 - **EquipColumn distribute 抑制技能态**:`renderSlot` 中 distribute 激活时 `activeSkill` 强制为 `undefined`,装备只作选牌候选(`isDistCandidate` 优先),样式与 `handleClick` 统一走选牌路径。(`src/client/components/EquipColumn.tsx`)
 
 #### 测试
+
 - **回归测试**:`playercard-equip-distribute.test.tsx` 新增——distribute 激活 + 装备有 active respond-confirm action 时,点击触发选牌(`onEquipCardClick`)而非技能(`onSkillAction`)。
 
 ### Fixed — 自动跳过误跳过后续问询(南蛮入侵/决斗等)
@@ -266,10 +332,12 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 根因:headless `maybeAutoSkipBroadcast` 的 `setTimeout` 不保存 ref、不清理,延迟期间 view 变化后旧 timer 必然触发;前端 `useAutoSkip` 虽有 `clearTimeout`(effect 重跑),但 `fire()` 仍依赖实时 seq。
 
 #### Changed
+
 - **headless 延迟 skip 防串扰**:`HeadlessGameClient` 新增 `_autoSkipTimer` 字段;`maybeAutoSkipBroadcast` 开头清理未触发的旧 timer(新窗口到达即作废旧 skip);`setTimeout` 回调触发前校验 `view.pending.deadline` 与决策时一致才 `pass()`;游戏重置时清理 timer。(`src/client/headless/HeadlessGameClient.ts`)
 - **前端延迟 skip 双保险**:`useAutoSkip` 新增 `latestViewRef`,`fire()` 触发前比对决策时 `pending.deadline`,view 已推进到新窗口则丢弃 skip。与 headless 一致,防止 effect 重跑时序边界。(`src/client/hooks/useAutoSkip.ts`)
 
 #### 测试
+
 - **headless 防串扰回归**:`pass-skip.test.ts` 新增——延迟跳过期间 view 推进到能响应的新窗口,旧 skip 不误发(复现南蛮/决斗场景)。
 - **前端防串扰回归**:`useAutoSkip.test.tsx`(新)——renderHook + fake timer 验证延迟 skip 在 view 推进后不误发,且同一窗口内正常发 skip。
 
@@ -278,10 +346,12 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 原「自动跳过此类询问」checkbox 仅在对应 pending 出现时显示(AwaitingPrompt 内),pending 消失后无法取消已勾选的项。新增常驻管理入口:顶部栏工具组(与音效/资源包按钮并排)显示已勾选数量徽章,默认折叠,hover(或键盘 focus)展开列表,逐项点击「取消」即可关闭。无勾选时不渲染。
 
 #### Changed
+
 - **AutoSkipManager 组件**:从 `prefs.optInSkip` 提取已勾选(true)项,渲染 trigger 按钮 + 数量徽章;CSS `:hover`/`:focus-within` 展开下拉(`[data-autoskip-dropdown]`),每项一个「取消」按钮调 `onToggle(requestType)`。(`src/client/components/AutoSkipManager.tsx`)
 - **GameView 接入**:toolbarGroup 渲染 `<AutoSkipManager>`,复用 `useAutoSkipPrefs` 的 `prefs`/`toggleOptIn`。(`src/client/components/GameView.tsx`)
 
 #### 测试
+
 - **AutoSkipManager 契约测试**:`AutoSkipManager.test.tsx`(新)——无勾选/仅 false 不渲染、渲染数量只计 true、点击取消回调传正确 requestType、多项独立取消。
 
 ### Added — 使用桃/酒等牌的动画效果在目标武将卡上播放
@@ -289,9 +359,11 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 使用桃、酒等牌时，牌的 VFX 特效（card/peach、card/analeptic APNG）此前居屏幕中央播放，没有定位到目标武将卡——伤害特效 card/damage 已定位到受伤害者武将卡，造成不对称。根因：`使用时` atom 的 ViewEvent 只携带 source（使用者）、不带 target，`useVfxPlayback` 提取 target 时无 target/player → undefined → VfxLayer 居中。桃/酒 selfTarget，使用者即目标，故 target 提取回退到 source 即可定位到目标武将卡。同时附带补全回血时座位卡的 HP 绿光动画（对称伤害红光），让回血场景在 HP 变化层也有视觉反馈。
 
 #### Changed
+
 - **useVfxPlayback target 提取加 source 回退**（根因）：target 优先级由 `target > player > undefined` 改为 `target > player > source > undefined`。使用时/打出牌时 事件只携带 source，回退到 source 让牌的特效定位到使用者武将卡；伤害(target)/判定(player)类事件优先级不变，不受影响。(`src/client/hooks/useVfxPlayback.ts`)
 
 #### Added — 回血时座位卡 HP 绿光动画（对称伤害红光）
+
 - **useAnimationState 检测 HP 上升**：新增 `healFlashIndices`(Map<座次,版本号>)，与伤害检测共用同一 HP 快照 effect——HP 上升时记录座次并递增版本号、650ms 后自动清除，HP 下降仍走 `damageFlashIndices`，两者互不误触。(`src/client/hooks/useAnimationState.ts`)
 - **回血 keyframes**：新增 `healFlash`(HP 红心绿色脉冲，对称 `damageFlash`)与 `healOverlay`(绿光覆盖层，对称 `damageOverlay`)。(`src/client/animations.css`)
 - **座位卡回血动画**：`PlayerSeatView` 新增 `isHealed`/`healVersion` props，座位卡应用 `seatHealOverlay`(绿光覆盖)、HP 红心应用 `hpHealFlash`(绿心脉冲)，`key` 含 healVersion 触发动画重放；memo 比较器纳入。(`src/client/components/PlayerSeatView.tsx`)
@@ -300,6 +372,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 - **样式导出**：gameViewStyles 导出 `hpHealFlash`/`seatHealOverlay`。(`src/client/components/gameViewStyles/seat.ts`)
 
 #### 测试
+
 - **useVfxPlayback target 提取测试**：`VfxLayer.test.tsx` 新增 3 例——使用时事件(只有 source)回退到 source(桃/酒使用者即目标)、伤害事件 target 优先于 source/player、无 target/player/source 的事件 target=undefined(居中)。回归 VFX 定位优先级。
 - **回血检测单元测试**：`useAnimationState.test.tsx` 新增 4 例——HP 上升记录回血座次并递增版本号(且不误触伤害闪烁)、连续回血版本递增、650ms 动画窗口后自动清除、HP 未上升不记录(伤害/不变不算回血)。
 
@@ -312,6 +385,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 **非主公主公技展示**:界袁绍 character 未声明 `isLord`,其 `baseId='袁绍'` 不在 `LORD_CANDIDATES`(标版袁绍无主公技),导致 `isLord('界袁绍')=false`。选将 `pickLordCandidateGroups` 用 `LORD_CANDIDATES.includes(baseId)` 判断主公候选,界袁绍永远进不了主公候选池 → 只能非主公出场 → 「界血裔」(主公技) 永远无效却仍展示。同时前端角色卡(`PlayerCardLarge`/`PlayerSeatView`)的 `visibleSkills` 不区分主公技,非主公也展示。
 
 #### Changed
+
 - **乱击/界乱击 transform prompt 改 `useCardAndTarget`**(根因1):加 `targetFilter: { min: 0, max: 0 }` 表示 AOE 无需选目标。与丈八蛇矛(`max:1`)对齐进入转化模式的条件。(`src/engine/skills/乱击.ts`、`src/engine/skills/界乱击.ts`)
 - **TransformMode 携带 targetFilter + AOE 无目标提交**:`TransformMode` 接口新增 `targetFilter` 字段,`handleSkillAction` 设置转化模式时传入;`handleTransformPlay` 据 `targetFilter.max` 判断是否需目标,AOE(`max:0`)直接提交不带 `targets`;`GameView` 多卡转化按钮据 `needsTarget` 决定是否要求选目标。(`src/client/hooks/usePlayInteraction.ts`、`src/client/components/GameView.tsx`)
 - **界袁绍声明 `isLord: true`**(根因2):界袁绍有主公技界血裔,是常备主公。标版袁绍无主公技(`baseId='袁绍'` 不能进 `LORD_CANDIDATES`),故界版显式声明。(`src/engine/cards/characters/界袁绍.ts`)
@@ -319,6 +393,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 - **新增 `LORD_SKILLS` 集合 + 非主公主公技过滤**:在 `character-meta` 维护主公技技能 id 集合(护驾/激将/救援/制霸/暴虐/黄天/若愚 及其界版 + 界血裔),`PlayerCardLarge`/`PlayerSeatView` 的 `visibleSkills` 在非主公座次(`identity!=='主公'`)过滤掉主公技。(`src/engine/character-meta.ts`、`src/client/components/PlayerCardLarge.tsx`、`src/client/components/PlayerSeatView.tsx`)
 
 #### Added
+
 - **AOE 转化回归测试**:`usePlayInteraction.test.ts` 新增「乱击→万箭齐发无需选目标直接提交不带 targets」——锁定 `transformMode.targetFilter` 传入与 `handleTransformPlay` AOE 分支。
 - **界袁绍主公候选回归测试**:`char-select-distribution.test.ts` 新增「界袁绍(isLord 但 baseId 不在 LORD_CANDIDATES)进入主公候选」——锁定 `isLord('界袁绍')=true` 与 `pickLordCandidateGroups` 的 isLord 判断。
 - **主公技过滤回归测试**:`gameview-skill-button.test.tsx` 新增「主公主公技(激将)展示、非主公主公技(护驾)隐藏」。
@@ -329,6 +404,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 伤害等带目标的 Lottie/APNG 特效此前一律居屏幕中央播放,与「谁在受伤」脱节。`扣减体力` atom 的 ViewEvent 携带 `target` 与 `vfx:'card/damage'`,但 `useVfxPlayback` 只提取了 vfx 资源 ID、丢弃了 target,`VfxLayer` 也只做居中布局。观感即「张角受伤,伤害特效却盖在战场正中」。现把有目标的动效定位到目标座次的武将卡中心播放,无目标的动效仍居中。
 
 #### Changed
+
 - **座位 DOM 查询共享化**(根因前置):`findSeatEl`/`cssEscape` 从 `ActionOverlay` 提取到 `gameViewHelpers`,新增 `findSeatCenter`(返回座次中心 viewport 坐标)。`ActionOverlay` 改用共享工具,消除重复。(`src/client/utils/gameViewHelpers.ts`、`src/client/components/ActionOverlay.tsx`)
 - **useVfxPlayback 透传 target**:`VfxPlaybackItem` 新增可选 `target`(优先取 ViewEvent.target,回退 player),供 `VfxLayer` 定位。(`src/client/hooks/useVfxPlayback.ts`)
 - **VfxLayer 按目标定位**(根因):`VfxLayer` 新增 `view` prop,有目标的动效定位到对应座次中心(`translate(-50%,-50%)`),无目标/座次 DOM 缺失时回退居中。`GameView` 传入 `view`。(`src/client/components/VfxLayer.tsx`、`src/client/components/GameView.tsx`)
@@ -339,6 +415,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 出杀命中后,目标座位 HP 数字不更新(仍显示受伤前的值),但 card/damage 受伤动画与 injure 惨叫音效照常播放——观感即「没造成伤害却播放了受伤特效」。根因与 8099973b(「zones 浅拷贝」)同类:`viewMaintainer` 的 event 分支浅拷贝 view 时复制了 zones/log(避免 ZoneInfoBar/GameLog memo 冻结),却遗漏了 players 数组。viewReducer 原地突变 player 字段(扣减体力改 health 等),prev/next 的 player 元素同引用 → `playerVisibleEqual` 比较同一对象永远判等 → 座位卡(PlayerSeatView/PlayerCardLarge)memo 跳过重渲染,HP 不更新;同时 `useAnimationState` 的 `[view.players]` 依赖不变 → 伤害闪烁/震动动画失效。
 
 #### Changed
+
 - **viewMaintainer event 分支深拷贝 players**(根因):每个 player 创建新对象并复制其数组/对象字段(hand/skills/marks/tags/equipment/pendingTricks/judgeZone/vars/distanceVars/turnUsage),让 memo 比较器读到独立副本,正确触发重渲染。与 zones/log 浅拷贝遗漏同构。(`src/client/headless/viewMaintainer.ts`)
 - **回归测试**:`tests/headless/viewMaintainer.test.ts` 新增「event 增量深拷贝 players」——锁定扣减体力后 players 数组新引用、player 元素新对象、health 更新、prev 不被污染。回退修复即失败。
 
@@ -347,6 +424,7 @@ ADR 0027 决策7 原断言“restoreFromLog 不调 bootstrap，直接返回 pers
 APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式(每批新特效追加,从不缩减),而 `VfxLayer` 每次 `items` 变化都把整个数组并入活动列表。导致先出杀、再吃桃时,杀的特效被当作「新增」再次触发,叠加在桃的特效上——观感即「吃桃展示了杀的特效」。引擎层正确(用桃发 `vfx=card/peach`),资源映射与 `sound-test` 也正确,纯属前端渲染层的去重缺陷。
 
 #### Changed
+
 - **VfxLayer 历史特效去重**(根因):新增 `processedKeysRef` 记录已入活动列表的 item key,`useEffect([items])` 仅并入未处理的新增项。每个特效按 `key`(seq-vfxId,全局唯一)只播放一次,items 累积不再引发重复。(`src/client/components/VfxLayer.tsx`)
 - **补充单元测试**:`tests/client/VfxLayer.test.tsx` 验证 items 累积时不重复播放(出杀后吃桃,杀不再次触发)与单批次多特效正常播放。
 
@@ -355,6 +433,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 使用/打出牌已有牌名播报(`sound/card/{牌名}`),但实际对局中仍能听到多余的 `flip` 拟声。根因是三个环节都在叠音:`移动牌` atom「手牌→处理区」分支生成的 `type:'打出'` 事件播 `flip`(且该事件被 `EventBanner` 对 `'打出'` return null 跳过,视觉不翻牌,只有声音在响——这是最隐蔽的一处);打出流程的「声明打出时」「打出牌时」也各播一次 flip。现统一对齐「使用时」:牌名播报由 `使用时`/`打出牌时` 负责,`移动牌` 的置入处理区与「声明打出时」不再播声音。
 
 #### Changed
+
 - **移动牌 atom 打出分支去 flip**(根因):`手牌→处理区` 分支的 `effect.sound='flip'` 去掉。该分支生成的 `type:'打出'` 事件本应由 `EventBanner` 翻牌展示,但 `EventBanner` 已对 `'打出'` return null(改由 PlayHistoryStrip 展示),animation 成死值、sound 却仍在响——与紧随其后的「使用时/打出牌时」牌名播报叠音。保留 duration(控制 PlayHistoryStrip 停留时长)。(`src/engine/atoms/移动牌.ts`)
 - **打出牌时 atom 改牌名播报**:toViewEvents 按 `cardName` 设置 `effect.sound = 'card/${cardName}'`,与「使用时」一致;静态 effect 去掉 `sound:'flip'`。(`src/engine/atoms/打出牌时.ts`)
 - **声明打出时 atom 去 flip**:静态 effect 去掉 `sound:'flip'`(声明阶段是转化替换点,牌名播报归「打出牌时」)。(`src/engine/atoms/声明打出时.ts`)
@@ -405,6 +484,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 修复核心:牌名语音移到「使用时」atom 按牌名动态播报(`sound/card/{牌名}`),底层操作统一用 `flip` 短促拟声,不需音效的操作去音效。
 
 #### Changed
+
 - **牌名语音迁移到 `sound/card/`**:11 个音频文件从 `sound/{oldId}.mp3` 重命名为 `sound/card/{牌名}.mp3`(如 `draw.mp3`→`card/无中生有.mp3`),manifest.json 更新资源 ID。(`public/packs/base/`)
 - **使用时 atom 动态牌名语音**:toViewEvents 按 `cardName` 设置 `effect.sound = 'card/${cardName}'`,打出无中生有响"无中生有!";无语音文件的牌(如桃)audioEngine 404 负缓存静默跳过。(`src/engine/atoms/使用时.ts`)
 - **底层操作统一用 flip 拟声**:摸牌/弃置/获得/给予/声明打出时/打出牌时/扣牌/判定/添加延时锦囊/移除延时锦囊/移动牌(3 派生分支)/归还暂存牌/置创牌/移出至暂存区/当作/拼点扣置 的 `effect.sound` 从各自旧标识符改为 `'flip'`。
@@ -413,6 +493,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 - **删除 5 个错误音频文件**:target/mark/skill_add/skill_remove/transform(内容为角色台词,不适用)。
 
 #### Added
+
 - **音效试听页** `public/sound-test.html`:按新结构分组(牌名语音/通用拟声/体力伤害/装备标记/回合阶段),可逐个试听验证。
 
 ### Fixed — 制衡选牌缺少「全选 / 反选」按钮
@@ -420,10 +501,12 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 孙权发动制衡进入选牌面板后，操作栏只有「清空 / 确认 / 取消」，没有「全选 / 反选」按钮——而弃牌阶段与多卡转化（丈八蛇矛）模式均有这对快捷键。根因：distribute 的 `select` 模式（制衡）UI 分支只渲染了清空与提交按钮，遗漏了对称的全选/反选入口；`usePlayInteraction` 也没有 distribute 全选/反选 handler。
 
 #### Fixed
+
 - **新增 `handleDistSelectAll` / `handleDistInvert`**：distribute `select` 模式全选/反选 handler，复用 `selectAllOrdered`/`invertOrdered` 按 `maxTotal` 截断候选（`activeDistribute.cardIds`，制衡 `maxTotal=99` 基本等同全选）。与 `handleDiscardSelectAll`/`handleTransformSelectAll` 同构。(`src/client/hooks/usePlayInteraction.ts`)
 - **select 模式渲染「全选 / 反选」按钮**：distribute 操作栏在 `mode === 'select'` 时于「清空」前插入全选/反选按钮；全选在全部候选已选时禁用，反选在选中为 0 时禁用（与弃牌/转化模式约定一致）。仁德/遗计等 allocate / externalTargetSelection 模式不受影响。(`src/client/components/GameView.tsx`)
 
 #### Added
+
 - **全选/反选回归测试**：覆盖全选选中所有候选、`maxTotal` 截断取前 N、反选取未选、反选超 max 取尾部。(`tests/client/usePlayInteraction.test.ts`)
 
 ### Refactored — 删除 useCard 原语,使用牌统一走 runUseFlow + chargeOnSettle
@@ -433,12 +516,14 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 删除 `useCard`/`UseCardOpts`/`QuotaPolicy`,使用牌统一入口收敛为「调用方自行校验 + 直调 `runUseFlow`」:需要计费(杀的出杀次数累加)的调用方传 `{ onSettle: chargeOnSettle(state, src, cardId) }`,虚拟使用传 `{ virtual: true }`,两者可叠加。校验职责归位:主动使用由 use action 的 `validate(validateCardUse mode='play')` 负责;逼杀/代杀由各 skill 的 `respond.validate` 负责——借刀杀人/乱武/挑衅/激将/界挑衅/界激将/界乱武 的 respond 均已含权威校验,死兑底分支一并删除。
 
 #### Changed
+
 - **删除 `useCard`/`UseCardOpts`/`QuotaPolicy`**,新增 `chargeOnSettle(state, src, cardId)` 助手(查 CardEffect,仅当声明 onSettle 且非延时锦囊时返回计费回调)。使用牌 use action 的 execute 直调 `runUseFlow` + `chargeOnSettle`。(`src/engine/card-effect/use-card.ts`)
 - **`isCardBanned` 导出**(原 validate.ts 内部 helper),供逼杀 `respond.validate` 复用——useCard 删除后,禁出牌(义绝)检查归位调用方。(`src/engine/card-effect/validate.ts`)
 - **借刀杀人 resolve 直调 `runUseFlow('杀')`**,删除 `useCard` 封装与 `if (err) acquireWeapon` 死兑底;respond.validate 补 `isCardBanned` 闸门(A 被禁出牌时只交武器)。(`src/engine/card-effects/借刀杀人.ts`)
 - **19 个调用方迁移**(借刀杀人 card-effect + 18 个 skill:逼杀分支 删 `if(err)` 死兑底,计费分支 配 `chargeOnSettle`,虚拟使用 配 `{virtual:true}`),全部改为 `runUseFlow`;删除所有 `mandatedTargets`/`skipValidate` 冗余。(`src/engine/card-effects/借刀杀人.ts`、`src/engine/skills/{乱武,挑衅,激将,界乱武,界仁德,界神速,神速,界求援,界利驭,界势斩,界惴恐,界明策,界翦灭,界酒诗,界挑衅,界激将,离间,青龙偃月刀}.ts`)
 
 #### Removed
+
 - **删除 `tests/engine/use-card-primitive.test.ts`**:该文件仅测 useCard 原语的 `quotaPolicy`/`mandatedTargets`/`skipValidate` 契约,原语已删;虚拟杀计费语义由 `tests/skill-tests/{神速,界乱武,阶段跳过}.test.ts` 覆盖。
 - **`tests/skill-tests/神速.test.ts`** 原用 `useCard({charge})` 断言 play 模式次数上限拒绝,改为等价的 `validateCardUse(...,'play')`。
 
@@ -449,16 +534,20 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 修复分为三部分，分别纠正两张锦囊的归属问题，并抽取两个被它们暴露的通用机制。
 
 #### Fixed
+
 - **借刀杀人 respond 并入 `CardEffect.respond`（与火攻/顺手牵羊对齐），删除独立 skill 文件**:把原 `skills/借刀杀人.ts` 的 validate/execute 搬进 `card-effects/借刀杀人.ts` 的 `respond` 字段 + 新增 `respondPrompt`。被借刀者 A 的回应入口现由 play-card（使用牌）按卡名 `skillId='借刀杀人'` 注册到每个座次，跨座次回应不变。同步从 `skills/index.ts` 删除 loader、清理 `shared/cards/tricks.ts` 与测试中的过时引用。(`src/engine/card-effects/借刀杀人.ts`、`src/engine/skills/index.ts`)
 - **铁索连环 `recast` 保留独立 skill（仍留 `DEFAULT_SKILLS`）**:recast 是「替代出牌 action」（自定义 actionType，不走标准使用流程），进不了 CardEffect.respond，必须实例化 skill 才能注册。(`src/engine/atoms/选将.ts`、`src/engine/skills/铁索连环.ts`)
 
 #### Refactored — 重铸通用化
+
 重铸不是铁索连环的专利：连环/界连环（梅花当铁索连环）、界燕语（重铸杀）、界将驰（重铸一张手牌）都各自手写了相同的 `applyAtom(弃置)+applyAtom(摸牌)`。抽取通用 `recastCard(state, player, cardId)` helper（`src/engine/recast.ts`），5 处重铸点统一调用；action 注册、frame 包装、合法性校验仍由调用方负责。(`src/engine/recast.ts`、`skills/{铁索连环,连环,界连环,界燕语,界将驰}.ts`)
 
 #### Refactored — 连环传导迁为伤害结算基础设施
+
 传导逻辑（属性伤害联动横置状态）本是「连环状态 × 属性伤害」的联动行为，语义上属于伤害结算，与铁索连环牌解耦：任何途径置入连环状态（铁索连环牌、涅槃/界连环等武将技能调 `setChain`）都应受传导管辖。此前传导全局 after-hook 由 `skills/铁索连环.ts` 注册，是铁索连环必须留在 `DEFAULT_SKILLS` 的唯一原因。现将 `CHAIN_MARK`/`isChained`/`registerChainConductionHook` 迁入横置原语所在的 `face-down.ts`，由 `create-engine` 的 `bootstrap`/`registerSkillsFromState` 作为伤害结算基础设施注册（同 `registerWineHook`/`registerDelayedTrickHooks` 模式）。`skills/铁索连环.ts` 删除传导逻辑，瘦身为仅 recast。(`src/engine/face-down.ts`、`src/engine/skills/铁索连环.ts`、`src/engine/card-effects/铁索连环.ts`、`src/engine/create-engine.ts`)
 
 #### Added
+
 - **真实选将路径回归测试**:不手动注入卡牌技能，仅以 `DEFAULT_SKILLS` 构建 state，断言「铁索连环 recast 可执行」「借刀杀人 respond action 已注册」「铁索连环 recast action 已注册」——锁定这两张锦囊的非 use 逻辑必须随默认技能实例化。回退任一修复即失败。(`tests/skill-tests/铁索连环.test.ts`、`tests/skill-tests/借刀杀人.test.ts`)
 - **传导架构解耦回归测试**:无人持「铁索连环」技能时（仅使用牌/打出牌），横置状态仍联动属性伤害——证明传导来自伤害结算基础设施，不再依赖技能实例化。去掉 `registerChainConductionHook` 注册即失败。(`tests/skill-tests/铁索连环.test.ts`)
 
@@ -467,6 +556,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 实时对局中一次操作(如出杀)会接连推送多个 ViewEvent(打出/使用/伤害/扣血…),多条 SSE 消息常落在 React 同一渲染批次,`setIngestedEvents` 被合并。`useSoundPlayback` 监听 `ingested` 批次的 `useEffect` 在一次执行里同步播放整批事件的音效,导致「一个操作同时响多个音效」。而播放队列 `current`(`useEventPlayback`)由 `playNext` 逐个出队(每事件等待其 `effect.duration`),天然串行。修复:音效改跟随 `current` 单事件逐个播放,与视觉横幅同帧、不叠音。
 
 #### Fixed
+
 - **音效改跟随 current 事件逐个播放**:`useSoundPlayback` 入参由 `ingested`(批次) 改为 `current`(单事件),在事件成为当前播放项时响一声,串行不再叠音;同 seq 去重防 StrictMode/重渲染重复发声,seq 回退(回放 prev)后再次前进仍重放。(`src/client/hooks/useSoundPlayback.ts`、`src/client/components/GameView.tsx`)
 - **串行播放契约测试**:锁定「跟随 current 逐个播放、同 seq 不重复、null/无声不播放、volume 透传、回放 prev→next 重放」契约,防止回归到「监听 ingested 批次同步全播」。(`tests/client/useSoundPlayback.test.tsx`)
 
@@ -483,9 +573,11 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 游戏录像回放打开时(step=0 = initialView)全部武将名显示「未知」。根因:`ReplayRecorder` 在座次首次收到非空 view 时即捕获 baseline,而首个 view 来源于开局第一个 atom(抽身份)广播——此时所有玩家 `character` 仍为初始空串(`create-engine.ts:185`),尚未经 `分配武将` atom 填充(`replay-readonly-overlay` 测试注释曾记录「initialView 的 pending 是选将询问」,即此症状)。修复:recorder 推迟 baseline 捕获——选将未完成(存在 `character` 为空的玩家)时跳过捕获与事件累积,等所有玩家武将分配完成后的第一个 view 才作为录像起点。选将阶段事件(抽身份/发牌/分配武将)的结果均已体现于该 baseline,无回放价值,一并丢弃。修复后回放初始帧武将名/势力/体力均已就绪。
 
 #### Fixed
+
 - **recorder 推迟 initialView 捕获到选将完成**: `record()` 增加判断——`view.players.every(p => p.character)` 为假(选将未完成)时直接 return,不捕获 baseline、不累积事件。(`src/client/replay/recorder.ts`)
 
 #### Added
+
 - **recorder 选将未完成跳过测试**: 覆盖「选将阶段(character 空)view 被丢弃、选将完成后 view 触发捕获且 initialView 武将名非空、选将阶段事件不计入 events」契约;`makeView` 默认 `character=playerName` 反映选将完成后的真实状态。(`tests/unit/replay-recorder.test.ts`)
 
 ### Added — 铁索连环(横置)状态前端展示
@@ -493,6 +585,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 处于连环(横置)状态的武将此前仅在 marks 行以原始字符串 `chained` 显示，无辨识度。现座位卡与视角大卡均给出清晰的铁链视觉：铁灰光泽脉冲边框 + header 连环徽章(⛓)，并从 marks 行过滤掉原始 `chained` 文本。
 
 #### Added
+
 - **座位卡(PlayerSeatView)**:检测 `marks` 含 `chained` → 应用 `seatCardChained`(铁灰 `chainPulse` 脉冲边框) + header 显示 ⛓ 徽章(`title="横置·铁索连环"`)；marks 行过滤 `chained`，不再泄漏原始标记名。(`src/client/components/PlayerSeatView.tsx`)
 - **视角大卡(PlayerCardLarge)**:自己被横置时同样显示 ⛓ 徽章 + `playerCardChained` 脉冲光泽，与座位卡一致。(`src/client/components/PlayerCardLarge.tsx`)
 - **动画与样式**:新增 `chainPulse` keyframe(`src/client/animations.css`)；gameViewStyles 新增共享 `chainBadge`/`playerCardChained`(`seat.ts`/`actionBar.ts`)。
@@ -504,6 +597,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 按三国杀规则，出牌阶段用桃可对包括自己在内的已受伤角色使用，自疗是压倒性常见场景。修复后前端默认自动以自己为目标提交，无需手动点座位；满血时桃不 active（阻止无效操作）。对他人用桃的能力保留在后端/API 层（AI、harness 测试），前端 UI 限定自疗。濒死求桃走 respond 路径不受影响。
 
 #### Fixed
+
 - **桃 prompt 加 `selfTarget: true`**:前端无需手动选目标，选中桃即可出牌，`buildPlayParams` 自动以自己座次为 target 提交。(`src/engine/card-effects/桃.ts`)
 - **桃 targetFilter 加 `filter`**:仅受伤角色（含自己）可选为目标，防止选满血目标后被后端拒绝。(`src/engine/card-effects/桃.ts`)
 - **桃 `activeWhen` 加满血检查**:新增 `peachActiveWhen`，在 `defaultPlayActive` 基础上要求 `health < maxHealth`，满血时桃 use action 不 active。(`src/engine/card-effects/桃.ts`)
@@ -513,6 +607,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 在需要玩家回应的 pending 上,当玩家无法响应(或主动选择跳过)时代发 skip,省去无意义等待。两层行为:维度1(强制)无法响应时自动跳过,空手牌立即、有手牌随机延迟防手牌信息泄露;维度2(可选)用户可勾选「自动跳过此类询问」(如无懈可击),无论能否响应都延迟跳过。
 
 #### Added
+
 - **autoSkip 核心决策模块**:`decideAutoSkip` 纯函数,输入 handCount/canRespond/optInSkip 等,输出 act-now/act-delayed/wait 决策;`decideAutoSkipForView` 前端便捷包装,从 view 计算 canRespond(含转化技)再决策;`computeCanRespondForView` 独立性函数。(`src/client/utils/autoSkip.ts`)
 - **前端 useAutoSkip hook**:监听 pending 变化,按决策结果 act-now 立即发 skip、act-delayed 用 setTimeout 延迟发 skip;以 pending.deadline 去重同一窗口;广播型 skip 后调 markBroadcastSkipped 隐藏本地弹窗。(`src/client/hooks/useAutoSkip.ts`)
 - **useAutoSkipPrefs 偏好持久化 hook**:读写 localStorage(`sgs:auto-skip`),支持跨 tab 同步;暴露 toggleOptIn/isOptedIn。(`src/client/hooks/useAutoSkipPrefs.ts`)
@@ -529,6 +624,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 `registerBeforeHook` / `registerAfterHook` 此前用 `atomType: string` + `ctx.atom: Atom`(全联合),技能层无法获得类型收窄,导致 397 处 `ctx.atom as { target?: number; … }` 手动强转。现已建立 `atomType → atom 形状` 的泛型关联:register 函数泛型化为 `registerAfterHook<T extends AtomName>`,context 泛型化为 `AtomAfterContext<A extends Atom = Atom>`,通过 `AtomOfName<T>` 映射把类型名转为对应 atom 形状,handler 的 `ctx.atom` 自动收窄。
 
 #### Changed
+
 - **类型基础设施**:新增 `AtomName`（Atom 联合的 type 字面量集）和 `AtomOfName<T>`（类型名→atom 形状映射）到 `src/engine/types/atom.ts`。`AtomBeforeContext` / `AtomAfterContext` 泛型参数从类型名改为 atom 形状（默认 `Atom`，向后兼容）。
 - **register 函数泛型化**:`registerBeforeHook` / `registerAfterHook` / `registerJudgeModifier` 签名泛型化,handler 参数由 `AtomOfName<T>` 收窄;存储层集中在 register 内部擦除为宽类型（运行时按 atomType 分发保证安全）。(`src/engine/skill.ts`)
 - **消除 397 处强转**:全量删除 skills 目录的 `ctx.atom as {…}` 强转。修正 5 处 ZoneLoc 可选链导致的类型遮蔽（`atom.from?.player` → `atom.from.zone !== '手牌'` 判别后安全访问）。(`src/engine/skills/*.ts`)
@@ -539,6 +635,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 广播型无懈可击询问窗口中,玩家点击「不回应」时前端仅做了本地标记(`markBroadcastSkipped`),**未向服务端发送 `skip` action**。导致服务端 `skippedPlayers` 集合永远填不满,全员选择不回应后仍需等待 10 秒超时才结束窗口。服务端的 skip 累计 + 全员提前触发逻辑(`dispatch` skip handler)早已就绪并经测试覆盖,问题纯在前端漏发。
 
 #### Fixed
+
 - **广播 pending 不回应补发 skip**:`usePlayInteraction.ts` 的 `handleRespond` 在广播型 pending(`pendingTargetIdx < 0`)分支中,`markBroadcastSkipped` 之前补发 `send('__skip', 'skip', {})`,与 `HeadlessGameClient.pass()` 对广播型 pending 的行为一致。(`src/client/hooks/usePlayInteraction.ts`)
 
 ## [Unreleased] — 2026-07-09
@@ -548,6 +645,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 实现纯前端录像录制、下载和回放。游戏运行中逐 atom 录制 per-viewer 事件流,游戏结束后可下载录像 JSON;首页可加载录像进入回放模式,支持步进、播放、进度拖拽、速度控制(0.5/1/2/4x)和视角切换(debug 模式多座次录像)。回放引擎从 initialView 起步逐步 applyView 重建任意时刻视图,与实时视图一致。
 
 #### Added
+
 - **录像格式与录制器**:新增 `src/client/replay/` 模块(`types.ts`/`recorder.ts`/`replayFile.ts`/`replayEngine.ts`)。录像格式为 per-seat 独立事件流 + initialView 起点,逐 atom 记录。`ReplayRecorder` 在首次非空 view 时深拷贝 initialView,后续累积 ViewEvent。
 - **录制接入连接层**:`useDebugMultiConnection`(debug 多座次)和 `useMultiplayerRoom`(多人单座次)在 HGC onView 回调中调用 recorder.record,暴露 finalize/hasData 方法。
 - **回放状态 hook**:`useReplay` 管理步进/自动播放/速度/视角切换。回放引擎 `getViewAt` 深拷贝 initialView 后逐步 applyView,兼容 notify(pendingResolved)事件处理。
@@ -560,6 +658,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 审查 atoms 与 skills 实现中对「状态变更必经 atom」「apply/applyView 对称」原则的违反,修正两类问题。
 
 #### Fixed
+
 - **拼点 atom apply/applyView 对称化**:此前 `拼点` atom 的 `apply` 是 no-op(纯事件标记),`applyView` 却在视图侧把两张拼点牌从 processing 移入弃牌堆——apply 与 applyView 不对称,真正的牌移动散落在各调用方。现把牌移动集中到 `apply`(后端 frame.cards→弃牌堆),并补全 `applyView` 同步 `view.settlementStack[top].cards`(此前只清 `view.zones.processing`),后端与视图真正对称。(`src/engine/atoms/拼点.ts`)
 - **删除天义/烈刃/驱虎拼点后的直接 mutate**:三处技能在 `拼点` atom 后手动 `frameCards.splice` + `state.zones.discardPile.push` 直接改牌区,绕过 atom。现在拼点 atom 的 apply 集中移动,技能只需发 `拼点` 事件,删除三处冗余直接 mutate 与随之失效的 `frameCards` import。(`src/engine/skills/天义.ts`、`src/engine/skills/烈刃.ts`、`src/engine/skills/驱虎.ts`)
 - **移动牌 shadowOf 弃牌视图不对称**:`移动牌` atom 的 apply 把转化影子卡(武圣红牌当杀)入弃牌堆时用原卡替换,但 `toViewEvents` 仍下发影子卡的 name/suit/rank,前端弃牌堆展示的是影子卡而非实际入堆的原卡。现 `toViewEvents` 在弃牌分支读 `card.shadowOf` 对应的原卡信息下发(`cardId` 仍为影子 id 供前端手牌精确过滤)。(`src/engine/atoms/移动牌.ts`)
@@ -569,12 +668,14 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 此前多人模式(MultiplayerPage)游戏结束后仅有「返回大厅」(断开连接退出房间),想再打一局需重建房间、重新分享房间码。现新增「再来一局」:复用 debug 模式已有的 `restart_game`/`game_reset` 协议与 `session.resetToLobby`,结算界面并列两个按钮,点「再来一局」重置同一房间到「等待大厅」阶段,玩家重新准备后即可开始新一局。服务端 `handleRestartGame` 原本就对普通房间生效(无 debug 限制),本次只是补齐多人客户端。
 
 #### Added
+
 - **useMultiplayerRoom 暴露 sendRestart 并处理 game_reset**:`onMessage` 收到 `game_reset` 时清除 gameOver/view、ready 复位、stage 切回 `waiting`(保留 roomId/playerId,未退出房间);新增 `sendRestart` 调用 `hgc.sendRestart()` 发送 `restart_game`。(`src/client/hooks/useMultiplayerRoom.ts`)
 - **结算界面新增「再来一局」按钮**:`MultiplayerPage` 结束分支在「返回大厅」旁并列「再来一局」(绿色),点击调用 `mp.sendRestart`。(`src/client/pages/MultiplayerPage.tsx`)
 - **useMultiplayerRoom hook 测试**:mock WebSocket 验证 createRoom 进入 waiting、sendRestart 发送 restart_game、game_reset 后从 ended 回到 waiting 并清除 gameOver/view、reset 后仍保留 roomId/playerId。(`tests/client/useMultiplayerRoom.test.tsx`)
 - **viewMaintainer game_reset 契约测试**:锁定 `game_reset` 消息产生 `view:null/lastSeq:0/resetToLobby:true/phaseChangedTo:'lobby'`。(`tests/headless/viewMaintainer.test.ts`)
 
 #### Changed
+
 - **服务端注释更正**:`handleRestartGame` 注释由「debug 房间任意座次可触发」更正为「任意座次/玩家可触发(debug 一人多座 / 多人各自连接)」,反映对多人房间的实际支持。(`src/server/app.ts`)
 
 ### Fixed — distribute 主动技选牌状态在 action 失活时未自动清除
@@ -582,6 +683,7 @@ APNG 卡牌特效会重复播放:`useVfxPlayback` 返回的 `items` 是累积式
 debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口超时引擎结束回合切到下一玩家，前端制衡选牌状态仍驻留，需手动点取消。仁德等其它 distribute 主动技同理。
 
 #### Fixed
+
 - **distribute 主动技自动取消**：`usePlayInteraction` 此前只为转化模式(transformMode，武圣/丈八蛇矛)提供「action 失活自动退出」effect，distribute 主动技分支(`distributeMode`，制衡/仁德)缺失对称逻辑。新增同名 effect：当 `distributeMode` 对应的 action 不再 active(出牌阶段超时回合结束 / debug 切视角到非当前回合玩家 / 限一次已用 / 技能被卸载)时，清除 `distributeMode` 及关联的 `distSelected`/`distAllocations`/`distTargetName`。被动 pending 分支(遗计)由 pending 驱动，pending 消失自然归 null，无需清理。(`src/client/hooks/usePlayInteraction.ts`)
 
 ### Added — AI 代打 MCP server
@@ -589,11 +691,13 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 把三国杀引擎包装成游戏环境，通过 MCP server 暴露给外部通用 agent（Claude Code/OMP），由 agent 驱动某个座次的完整生命周期（进房间/准备/开始/选将/出牌循环）。游戏项目不集成 LLM，推理交给外部 agent。
 
 #### Added
+
 - **HeadlessGameClient 共享核心**：抽出家框架无关的单座次无头 WS 玩家客户端（`src/client/headless/`），封装 WS 连接、view 增量维护（复用 `viewReducer`）、可执行操作枚举（复用 `gameViewHelpers`/`pendingRespond`/`skillActionRegistry`）、房间生命周期。与 debug 前端共用，消除重复逻辑。(`src/client/headless/HeadlessGameClient.ts`、`viewMaintainer.ts`、`availableActions.ts`、`types.ts`)
 - **MCP server**：手写 JSON-RPC 2.0 over stdio（不依赖破损的 `@modelcontextprotocol/sdk` v1.29.0，其 exports map 对 `McpServer`/`StdioServerTransport` 不可达）。`play` 工具统一「动作→观察」循环：执行操作 → 阻塞等待本座次 needsAction/游戏结束/超时 → 返回 view 快照 + 可执行操作枚举。(`src/ai-mcp/server.ts`、`mcpServer.ts`、`playHandler.ts`、`viewProjector.ts`)
 - **npm 脚本**：`pnpm mcp:serve` 启动 MCP server（开发用，生产用 `npx tsx src/ai-mcp/server.ts` 避开 pnpm banner 污染 stdout）。
 
 #### Changed
+
 - **debug 多座次前端迁移到 HeadlessGameClient**：`useDebugMultiConnection` 从「单 hook 管 N 连接」重构为「N 个 HGC 实例 + 协调器」，view 维护/连接逻辑收敛到 HGC，hook 只保留展示层增强（判定牌 processing 延迟、seatPlayerIds、event playback）。净减 100 行。浏览器回归验证 4 人局全流程零错误。(`src/client/hooks/useDebugMultiConnection.ts`)
 
 ### Changed — 选目标改为点角色卡片 + 不回应/结束回合移入操作栏
@@ -601,6 +705,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 移除独立的目标选择面板(TargetSelector),改为直接点击座位上的角色卡片选目标,不可选座位置灰;「不回应」按钮从顶部待回应区移入下方操作栏(actionBar),「结束回合」靠操作栏右端。
 
 #### Changed
+
 - **移除目标选择面板**:删除 `TargetSelector` 组件,出牌时直接点击弧形座位上的角色卡片选目标(原已有 `onTargetClick` 机制)。借刀杀人等双目标(slots)牌改为按选择进度依次点选 A、B(首次点选 A,再次点选 B),`isTargetable` 在 slots 模式按当前槽位 filter 判断可选性。(`src/client/components/TargetSelector.tsx` 删除,`src/client/hooks/usePlayInteraction.ts`、`GameView.tsx`)
 - **不可选座位置灰**:选目标阶段不满足条件的座位(距离外/不满足槽位条件)应用置灰样式(`seatCardUntargetable`:opacity 0.4 + grayscale 0.8),与可选座位形成视觉对比。(`src/client/components/PlayerSeatView.tsx`)
 - **座位高亮支持多目标**:`PlayerSeatView` 的选中高亮 prop 由单值 `selectedTarget` 改为集合 `selectedTargetNames`(借刀杀人双目标 A+B 同时高亮)。(`PlayerSeatView.tsx`、`SeatArcLayout.tsx`、`GameView.tsx`)
@@ -613,6 +718,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 装备技能与装备展示融合为统一可点击卡片,装备区恒定保留宽度;distribute(制衡/仁德/遗计)不再使用独立分配面板,候选牌在手牌/装备区卡片选,目标在座位区选,提交按钮入操作栏。
 
 #### Changed
+
 - **装备区恒定渲染**:移除 `EquipColumn` 无装备时的 `return null`,装备区始终保留 168px 宽度,无装备显示「无装备」占位,不再因空装备塌缩宽度。(`src/client/components/EquipColumn.tsx`)
 - **装备技能融合到装备卡片**:装备技能不再作为装备区底部独立按钮(`equipSkillBtn`),而是绑定到对应装备槽位卡片(技能 `skillId === 装备牌名`)。技能可发动时卡片显示橙色发光 + ⚡ 徽标,点击即发动(行为与原按钮一致)。(`EquipColumn.tsx`、`gameViewStyles.ts`)
 - **装备三态可选**:统一装备卡片为三种可交互状态——技能可发动(橙色发光)、distribute 候选(金色边框)、已选中(`translateX(8px)` 向右偏移 + 绿色高亮,与手牌选中一致)。移除 `equipDistBtn`/`equipDistSelected` 独立候选样式。(`EquipColumn.tsx`、`gameViewStyles.ts`)
@@ -625,6 +731,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 优化对局下方主区域布局与出牌提示信息呈现,使装备/武将/手牌分区更清晰,回合归属与等待状态更直观。
 
 #### Changed
+
 - **装备区独立成列(最左侧,纵向)**:装备区从 `PlayerCardLarge` 抽出为独立的纵向 `EquipColumn` 组件,置于布局最左侧纵向排列装备槽位;武将卡片(`playerCardLarge`)移至最右侧。下方主区域由「左武将/右手牌」两栏改为「左装备/中手牌/右武将」三栏。(`src/client/components/EquipColumn.tsx` 新增,`GameView.tsx`、`PlayerCardLarge.tsx`)
 - **回合武将卡片高亮边框**:当前回合玩家的武将卡片显示金色 `outline` + 发光(`playerCardTurn`),谁的回合一目了然。(`gameViewStyles.ts`、`GameView.tsx`)
 - **弃牌按钮移入操作栏**:弃牌阶段的「确认弃牌」「清空选择」按钮从 `PlayPhasePrompt` 提示框移至 `actionBar`,与「结束回合」并排放置。(`PlayPhasePrompt.tsx`、`GameView.tsx`)
@@ -636,6 +743,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 所有客户端组件从 `CSSProperties` 对象内联样式迁移到 Linaria `css` 标记模板,实现零运行时 CSS-in-JS。
 
 #### Changed
+
 - **theme.ts**:移除 `styles` 工厂函数(`page`/`btn`/`input`/`errorToast`),替换为 Linaria `css` 具名导出(`pageStyle`/`btnStyle`/`inputStyle`/`errorToastStyle`);动态值通过 CSS 自定义属性(`--page-padding`/`--btn-bg`等)传入。
 - **gameViewStyles.ts**:从 `CSSProperties` 对象重写为 Linaria `css` 模板,样式规模大幅扩展(新增布局/flex/定位等声明式样式)。
 - **全部 UI 组件**:`import { styles }` → `import { pageStyle, btnStyle, … }`,内联 `style={}` 替换为 `className`。
@@ -645,6 +753,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 角色阵亡后其他玩家视角仍显示身份为「暗」,未能按规则揭示。根因:`击杀` atom 的 `applyView` 只置 `alive=false`,未同步身份;前端走事件流(`viewReducer` → `applyView`)增量更新,而 `buildView` 的全量快照揭示逻辑在此路径上不生效,导致阵亡身份不公开。
 
 #### Fixed
+
 - **击杀事件携带并揭示身份**:`击杀.toViewEvents` 从 state 读取阵亡者真实身份写入事件(死亡即公开),`applyView` 据此把 `identity`/`identityHidden` 置为揭示态。(`src/engine/atoms/击杀.ts`)
 - **回归用例**:验证 toViewEvents 携带身份、applyView 后所有视角可见阵亡者身份。(`tests/skill-tests/applyView-bugs.test.ts`)
 
@@ -653,6 +762,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 弃牌阶段手牌上限应等于角色**当前体力值**(受伤时低于体力上限),但弃牌检查与超时自动弃牌均误用 `maxHealth`(体力上限)。结果受伤角色手牌数介于当前体力值与体力上限之间时该弃不弃(或弃牌数偏少)。例如体力上限 4、当前体力 2、手牌 3 张,旧逻辑判定 3 ≤ 4 不进入弃牌阶段,正确应弃 1 张。
 
 #### Fixed
+
 - **弃牌上限改用 `health`**:回合管理弃牌阶段检查(`回合管理.ts`)与请求回应超时自动弃牌(`请求回应.ts`)均由 `maxHealth` 改为 `health`,与标准三国杀规则一致。(`src/engine/skills/回合管理.ts`、`src/engine/atoms/请求回应.ts`)
 - **回归用例**:新增受伤(health=2 < maxHealth=4)手牌 3 张的弃牌用例,验证按当前体力值进入弃牌阶段且 excess=1。(`tests/integration/弃牌阶段.test.ts`)
 
@@ -661,6 +771,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 主公阵亡时 `checkGameOver` 返回 `winner: undefined`,session 据此广播 `winner: '无人'`,结算界面显示"无人获胜"。按三国杀规则主公阵亡应由反贼获胜(内奸清场单挑残局除外)。根因:胜负判定函数未区分主公阵亡时的阵营归属。
 
 #### Fixed
+
 - **主公阵亡胜负判定**:`checkGameOver` 主公阵亡分支改为按存活阵营判定胜方——反贼仍存活→反贼获胜;反贼全灭且内奸存活(内奸清场残局)→内奸获胜;极端(反贼/内奸均无存活)→仍判反贼获胜。`winner` 返回对应阵营代表座次,前端 `winningCamp` 据其 identity 推导阵营文案。(`src/engine/create-engine.ts`)
 
 ### Added — 游戏结束后"再来一局"重新进入准备阶段
@@ -668,12 +779,14 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 游戏结束结算界面此前仅有"返回大厅"(删除房间)。现新增"再来一局":复用同一 session 重置房间到「配置+准备」阶段,玩家重新准备后即可开始新一局,无需重建房间。
 
 #### Added
+
 - **协议扩展**:新增 `restart_game`(客户端→服务端)与 `game_reset`(服务端→客户端)消息。(`src/server/protocol.ts`)
 - **session.resetToLobby**:`gameOverHandled` 复位、丢弃旧 state、清空广播水位/准备记录、房间状态回到「等待中」、广播 `game_reset` 通知客户端清除结算界面回到配置面板。(`src/server/session.ts`)
 - **restart_game 路由**:debug 房间任意座次可触发,复用 session 重置后广播 `room_state`。(`src/server/app.ts`)
 - **结算界面新增"再来一局"按钮**:`GameResultOverlay` 增加 `onRestart`,与"返回大厅"并排;客户端收到 `game_reset` 后清除 gameOver/gameStarted/views 缓存回到配置面板。(`src/client/components/GameResultOverlay.tsx`、`src/client/hooks/useDebugMultiConnection.ts`、`src/client/components/DebugLobby.tsx`)
 
 #### Changed
+
 - **新增胜负判定与重置回归用例**:主公阵亡反贼/内奸胜方判定、resetToLobby 房间复位。(`tests/server/session-turn-deadline.test.ts`)
 
 ### Fixed — 兵粮寸断判定生效后仍摸牌
@@ -681,9 +794,11 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 兵粮寸断判定为非梅花(生效)后本应跳过摸牌阶段,却仍摸了 2 张牌。根因:兵粮寸断通过 `registerBeforeHook` cancel 当前 `阶段开始(摸牌)` atom,并在 hook 内部自行把阶段推进到出牌;但回合管理的「阶段结束」after hook 在 `applyAtom(阶段开始, 摸牌)` 返回后**无条件**继续执行 `摸牌(×2)` 与 `阶段结束(摸牌)`——它并未察觉该 atom 已被 before hook 取消。结果「跳过摸牌阶段」只取消了阶段开始事件,摸牌动作照常发生,日志表现为出现两次「摸牌阶段结束」且仍「摸了 2 张牌」。乐不思蜀/闪电不受影响:乐不思蜀跳过的是出牌阶段(非自动阶段,after hook 无强制后续动作),闪电不跳过阶段。
 
 #### Fixed
+
 - **回合管理阶段推进加 phase 守卫**:`阶段结束` after hook 在 `applyAtom(阶段开始, next)` 之后校验 `ctx.state.phase === next`;若阶段被 before hook cancel/改写(如兵粮寸断跳过摸牌),`state.phase` 已偏离 `next`,直接 return,不再执行该阶段的自动动作(摸牌/弃牌检查/自动结束)。(`src/engine/skills/回合管理.ts`)
 
 #### Changed
+
 - **新增完整回合流转回归用例**:验证判定阶段结束 → 摸牌被兵粮寸断跳过 → 手牌不增加、标签清除、阶段推进到出牌;此前用例只直接 dispatch `阶段开始(摸牌)` 绕过回合管理,无法捕获本回归。(`tests/skill-tests/兵粮寸断.test.ts`)
 
 ### Fixed — 八卦阵确认发动后判定翻牌动画期间询问闪提前弹出
@@ -698,9 +813,11 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 桃园结义对满血角色本就无回复效果(无法回血),原实现对满血目标仍逐个广播询问无懈可击——既冗余(无可抵消的效果),又拖慢结算节奏、徒增无意义窗口。现满血目标直接跳过整个结算(不询问无懈、不回血),与三国杀标准实现一致。
 
 #### Fixed
+
 - **桃园结义满血目标跳过无懈问询**:逐目标结算循环中,满血目标(`HP >= maxHealth`)直接 `continue`,既不调用 `askWuxie` 也不 `回复体力`。(`src/engine/skills/桃园结义.ts`)
 
 #### Changed
+
 - **测试适配无懈窗口次数**:全满血场景不再需要 `pass`(`useCard` 内 `waitForStable` 即结算完成);部分满血场景 `pass` 次数=未满血存活目标数。同步更新机制注释。(`tests/integration/taoyuan.test.ts`、`tests/integration/taoyuan-heal.test.ts`、`tests/skill-tests/桃园结义.test.ts`)
 - **新增「满血不问询无懈」针对性用例**:混合场景(P1 满血、P2/P3 未满血)断言仅未满血目标产生无懈窗口(2 次 pass),满血目标 P1 无窗口。(`tests/skill-tests/桃园结义.test.ts`)
 
@@ -833,87 +950,108 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **测试**:`tests/client/telemetry.test.ts`(10 例,覆盖 ring buffer/全局异常捕获/DOM 采集/幂等)、`tests/server/snapshot.test.ts` 新增 2 例(带 telemetry 写 sidecar 文件、不带 telemetry 兼容)。
 
 ### Changed
+
 - 出牌阶段使用卡牌的统一前置校验(validateUseCard)提取至 skill.ts,消除 14 张卡牌技能中的重复校验逻辑。
 
 ### Fixed
+
 - Registered display-only atoms (等待选将, 打出) to prevent viewReducer from crashing on non-dispatch ViewEvent types used in othersView
 - Isolated pending slots during serial character selection (主公先选) to prevent non-selecting players from seeing the lord's selection UI and shared countdown
 - Added toViewEvents to 发牌 atom with information-leveled view events so each player sees their own dealt cards; others see only count metadata
 - Suspended idle timer when room has no active WS connections to prevent timer self-loop leak
 - Added detailed target validation to 过河拆桥 and 顺手牵羊: reject self-target, dead targets, out-of-range targets, and targets with no valid cards
 - Added detailed target validation to 过河拆桥 and 顺手牵羊: reject self-target, dead targets, and out-of-range targets
+
 ## [Unreleased] — 2026-06-21
+
 ### 仁德/制衡 bug 修复 — 发动次数与时序漏洞
 
 修复仁德规则错误(错误地限一次)和制衡可重复发动的时序 bug(fire-and-forget 窗口期 `usedThisTurn` 未设)。
 
 #### Fixed
+
 - **制衡可重复发动(fire-and-forget 时序 bug)**: `制衡/usedThisTurn` 标记原在 execute 末尾(`applyAtom(摸牌)` 之后)才设,但 dispatch 是 fire-and-forget——session 不 await,execute 内的 `await applyAtom` 会让出事件循环,前端收到中间状态广播后技能按钮仍亮,用户可再次点击发 dispatch。第二次 dispatch 的 validate 在第一次 execute 设标记之前就跑 → 通过 → 可重复发动。修复:把 `usedThisTurn = true` 移到 execute 最开头(第一个 `await` 之前),dispatch 同步阶段即设好标记,第二次 validate 必然拒绝。(`src/engine/skills/制衡.ts`)
 - **仁德规则错误(误实现为限一次)**: 原实现把仁德写成了「出牌阶段限一次」,但标准版/国战版仁德可多次发动——「出牌阶段,可以将任意张手牌交给其他角色;以此法失去第二张牌时回复 1 点体力」。修复:移除 `仁德/usedThisTurn` 限制,改用 `仁德/givenCount` 累计计数 + `仁德/healed` 标记。给出牌时累加 `givenCount`,当从 1 跨越到 2(首次达到 2 张)时回血一次并设 `healed`,之后继续给牌只累计不再回血。回合结束清理新增标记。(`src/engine/skills/仁德.ts`、`src/engine/atoms/回合结束.ts`)
 
 #### Added
+
 - **仁德新规则测试**: 覆盖可多次发动(第一次给 1 张不回血,第二次再给 1 张累计 2 张回血)、回血仅一次(累计≥2 张后继续给牌不再回血)、分三次各给 1 张的累计回血时序。(`tests/skill-tests/仁德.test.ts`)
 - **制衡时序防回归测试**: 连发两次 `dispatch`(不等第一次稳定),验证第二次被拒(seq 只 +1,修复前为 +2)。该测试在回退修复后确定性地失败,证明能捕获时序 bug。(`tests/skill-tests/制衡.test.ts`)
 
 ## [Unreleased] — 2026-06-21
+
 ### 牌堆耗尽 bug 修复 — 摸牌未合并弃牌堆重洗补充
 
 修复牌堆耗尽时摸牌直接失败、未将弃牌堆重新洗牌补充的问题。同时实装了长期空置的 `重洗`/`洗牌` atom(TODO 占位)。
 
 #### Fixed
+
 - **摸牌牌堆不足未重洗弃牌堆补充**: `摸牌` atom 的 validate 在牌堆不足时直接报错 `'deck empty'`,apply 不执行,导致回合摸牌/制衡/无中生有等抽牌流程在牌堆耗尽时直接卡死。修复:validate 改为只在牌堆+弃牌堆总数都不足以满足 count 时才报错;apply 在牌堆不足时合并 deck+discardPile,Fisher–Yates 洗牌后抽足,弃牌堆清空。`toViewEvents` 与 apply 共用同一纯函数 `planDraw`,保证 owner 看到的具体牌面与实际摸入一致。(`src/engine/atoms/摸牌.ts`)
 - **`重洗` atom 长期空置**: 原 `apply` 为空 TODO(`// TODO: 弃牌堆+牌堆合并并洗牌(待 RNG 接入)`)。修复:实装为合并 deck+discardPile → Fisher–Yates 洗牌 → 弃牌堆清空,用 `state.rngSeed` 派生 RNG(推进后写回),保证重放确定性。(`src/engine/atoms/重洗.ts`)
 - **`洗牌` atom 长期空置**: 原 `apply` 为空 TODO(`// TODO: 真正的随机化洗牌(待 RNG 接入)`)。修复:实装为对当前 deck 做 Fisher–Yates 洗牌,用 `state.rngSeed` 派生 RNG(推进后写回)。(`src/engine/atoms/洗牌.ts`)
 
 #### Added
+
 - **摸牌重洗补充集成测试**: 覆盖牌堆不足触发重洗、牌堆完全为空从弃牌堆补足、牌堆+弃牌堆都不足时 validate 拒绝、牌堆充足不触发重洗、相同 rngSeed 可重放、重洗后 rngSeed 被推进,以及 `重洗`/`洗牌` atom 的独立单元验证。(`tests/integration/draw-reshuffle.test.ts`)
 
 ## [Unreleased] — 2026-06-20
+
 ### 延时锦囊 bug 修复 — 无懈可击问询时机错误
 
 修复闪电/乐不思蜀/兵粮寸断三类延时锦囊的无懈可击问询时机:延时锦囊的生效时机是判定阶段而非使用时,无懈可击问询应在判定前才出现。同时修补了乐不思蜀遗漏无懈可击问询的 bug。
 
 #### Fixed
+
 - **闪电无懈可击问询时机错误**: 原实现在出牌阶段使用时即问询无懈可击,但闪电此时只是放入判定区尚未生效。修复:从 `use` action 移除无懈问询,改到判定阶段 before hook 中——判定前先问无懈,被抵消则移除延时锦囊并跳过判定。(`src/engine/skills/闪电.ts`)
 - **兵粮寸断无懈可击问询时机错误**: 与闪电同样的问题,使用时问询无懈。修复:同闪电——use action 仅放置延时锦囊,无懈问询移到判定阶段判定前。(`src/engine/skills/兵粮寸断.ts`)
 - **乐不思蜀遗漏无懈可击问询**: 乐不思蜀原实现完全没有无懈可击问询(使用时和判定前都没有),玩家无法对乐不思蜀打出无懈。修复:在判定阶段 before hook 判定前补上无懈可击问询,与闪电/兵粮寸断一致。(`src/engine/skills/乐不思蜀.ts`)
 
 #### Added
+
 - **延时锦囊被无懈抵消测试**: 验证闪电在判定前被打出无懈可击后被抵消——闪电移除、不判定、不受伤、不传递,判定牌未被翻动。(`tests/skill-tests/闪电.test.ts`)
 - **更新延时锦囊测试适配新时机**: 闪电/兵粮寸断的 use action 测试不再需要消耗无懈窗口;判定阶段测试改为 fire-and-forget + fireTimeoutAndWait 模式以处理新增的无懈 pending。(`tests/skill-tests/闪电.test.ts`、`tests/skill-tests/乐不思蜀.test.ts`、`tests/skill-tests/兵粮寸断.test.ts`、`tests/integration/乐不思蜀.test.ts`、`tests/integration/乐不思蜀判定跳过.test.ts`)
 
 ## [Unreleased] — 2026-06-20
+
 ### 选将 bug 修复 — 并行选将卡住直到超时
 
 修复并行选将场景下,多个玩家同时 respond 选将时,后发的 respond 被 CAS 校验误拒,导致选将流程卡住直到 60s 超时才能开始的阻断性问题。
 
 #### Fixed
+
 - **并行选将卡住直到超时**: `session.handleAction` 的 CAS 校验(`baseSeq !== curState.seq`)在并行选将/并行回应场景下错误地拒掉了合法 respond。多个玩家同时 respond 选将会让 `state.seq` 连续 +1,其它玩家基于旧 `lastSeq`(广播有延迟)发的 respond 会被 CAS 误拒,导致选将流程卡死,只能等 60s 超时自动分配。修复:respond 路径(该 ownerId 存在对应的 pending slot)跳过 CAS 校验——respond 本质是对已存在 pending 的回应,只要 slot 还在就应允许;只有主动 action(无 pending slot)才需要 CAS 防止陈旧操作。这也顺带修复了"其它玩家看不到主公选将完成"的表现——那是选将流程被卡住的副作用。(`src/server/session.ts`)
 
 #### Added
+
 - **session CAS 行为回归测试**: 验证并行选将中基于陈旧 baseSeq 的 respond 仍被接受(选将完成,不卡到超时),以及主动 action 在无 pending 时仍受 CAS 保护。(`tests/server/session-cas-respond.test.ts`)
 
 ## [Unreleased] — 2026-06-20
+
 ### 选将 bug 修复 — idle timer 误触发/超时空武将/武将池缺失
 
 修复实际运行中选将流程的三个阻断性问题:玩家超时或选将间隙时游戏被错误推进导致空武将、武将池只有 6 个导致常备主公拆分无意义。
 
 #### Fixed
+
 - **选将间隙 idle timer 误触发自动结束回合**: `resetIdleTimer` 在主公选完→并行选将创建之间的间隙(pendingSlots.size===0)启动了 50s 定时器,玩家选将慢时误触发"自动结束回合",清掉所有选将 pending。修复:选将阶段(phase==='准备' 且仍有玩家未选完武将)不启动 idle timer。(`src/server/session.ts`)
 - **选将超时后玩家武将为空**: 选将询问 slot 超时(60s)只执行 `无操作` atom,未给玩家分配武将,导致游戏带着空武将(character 为空)进入出牌阶段,显示"未知"且不可玩。修复:`createAndAwaitSlot` 的 `fireTimeoutNow` 对选将询问 slot 特殊处理——超时后从该玩家候选列表随机分配一个未被选走的武将(与 respond 一致设 DEFAULT_SKILLS),不留空武将。(`src/engine/create-engine.ts`)
 
 #### Changed
+
 - **session 武将池改用引擎全量武将**: `session.ts` 原硬编码 6 个武将(刘备/曹操/孙权/关羽/郭嘉/司马懿),现改用 `allCharacters`(57 个),使常备主公 5+非常备 2 拆分与按身份分配有实际意义。(`src/server/session.ts`)
 
 #### Added
+
 - **选将超时自动分配测试**: 验证选将 slot 超时后玩家从候选列表自动分配武将、无空武将、跨玩家不重复。(`tests/integration/char-select-distribution.test.ts`)
 
 ## [Unreleased] — 2026-06-19
+
 ### 选将逻辑重构 — 按身份分配候选武将 + 不实例化武将技能
 
 修正选将分配逻辑:主公选完后未选的武将进入候选池,其余玩家按身份从候选池随机抽取特定数量的候选武将(不重复),候选池不足时从总池补足;选将完成后只实例化引擎默认技能,暂不实例化武将自身技能。
 
 #### Changed
+
 - **选将候选数改为按身份配置**: 新增 `CANDIDATES_PER_IDENTITY` 配置表(主公 7/忠臣 5/反贼 4/内奸 5,对齐三国杀OL身份模式)。主公先选完后,池中未被选中的武将全部进入候选池。(`src/engine/skills/开局.ts`)
 - **主公候选池拆分为常备/非常备**: 常备主公(拥有主公技的武将:刘备/曹操/孙权/孙策/张角/董卓/刘禅)随机 5 + 非常备随机 2,合并为 7 张候选人。常备不足时用非常备补足,总数仍不足则给现有全部。(`src/engine/skills/开局.ts`)
 - **非主公候选人按身份分配**: 从候选池随机抽取,跨玩家不重复(独占模式)。(`src/engine/skills/开局.ts`)
@@ -921,15 +1059,18 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **选将后不实例化武将技能**: respond action 选定武将后 `player.skills` 只保留引擎默认技能(`DEFAULT_SKILLS`),武将自身技能不进入 `player.skills`、不被 `instantiateSkill` 注册。候选人 atom 仍携带 `skills` 字段供选将 UI 显示。(`src/engine/skills/系统规则.ts`)
 
 #### Added
+
 - **CharacterMeta 增加 isLord 字段**: 新增 `LORD_CANDIDATES` 常量(7 个常备主公名单)作为 isLord 判定唯一来源,`CharacterMeta.isLord` 与 `isLord(name)` 查询函数。(`src/engine/character-meta.ts`)
 - **选将分配集成测试**: 覆盖按身份分配数量、候选池入池、候选人携带 skills 字段、不实例化武将技能、池不足共享模式、主公候选 5+2 拆分六个场景。(`tests/integration/char-select-distribution.test.ts`)
 
 ## [Unreleased] — 2026-06-17
+
 ### 前端游戏流程修复 — 选将/身份动画/技能过滤/出杀问闪/弃牌 UI
 
 通过多模型协作(sensenova 浏览器视觉验证 + mimo-v2-pro 代码审查 + deepseek/M3 批量实现 + mimo-v2.5 UI 设计)定位并修复 8 个问题。
 
 #### Fixed
+
 - **P0 出杀不问闪**: 双层根因——(1)buildView deadline 用相对时间,前端当绝对时间戳导致 remainingSeconds ≤ 0 立即自动 respond;(2)前端 useEffect 在 remainingSeconds ≤ 0 时自动触发 handleRespond。修复:deadline 改为绝对时间戳(state.startedAt + slot.deadline),删除自动 respond useEffect。(`src/engine/view/buildView.ts`, `src/client/components/GameView.tsx`)
 - **P0 手牌点击无操作面板**: useMemo 未 await registerSkillActions。修复:改 useState+useEffect 异步注册。
 - **P0 延时锦囊无法使用**: targets(数组) vs target(单数)契约错配。
@@ -947,15 +1088,18 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **P1 武圣不能使用**: prompt 类型改为 useCardAndTarget + transform + preceding 提交。(`src/engine/skills/武圣.ts`, `src/client/components/GameView.tsx`)
 
 #### Added
+
 - **选将 UI**: 游戏开始展示武将选择遮罩(5张随机武将卡,阵营色,hover 效果,确认选择)。(`src/client/components/GameView.tsx`)
 - **身份揭示动画**: 3D 翻转动画展示玩家身份(主公=金/忠臣=蓝/反贼=红/内奸=紫)。(`src/client/animations.css`, `src/client/components/GameView.tsx`)
 - **前端动画系统**: 摸牌滑入/出牌飞行/伤害闪烁震动/阶段过渡/回合光环。(`src/client/animations.css`, `src/client/components/GameView.tsx`)
 
 #### Changed — defineAction 驱动的 UI 渲染
+
 - **技能按钮区改为 prompt 类型驱动**: 不再硬编码 DEFAULT_SKILLS 过滤集。按文档设计,`defineAction` 的 `prompt.type` 决定渲染方式:`confirm`/`distribute`/`choosePlayer` 显示独立触发按钮;`useCard`/`useCardAndTarget`/`selectTarget` 影响手牌区可选性(哪些牌可选、选了怎么选目标),不显示按钮。(`src/client/components/GameView.tsx`)
 - **身份可见性 debug 与真实一致**: debug 模式下身份不再全部可见,统一规则:自己可见 + 主公可见 + 死亡可见 + 其他隐藏。切换视角可查看对应玩家身份。(`src/engine/view/buildView.ts`)
 
 #### Verified(sensenova 5/5 PASS)
+
 - 技能按钮区只显示 confirm 类型(遗计等),不显示杀/闪/桃/装备 ✅
 - 身份可见性:自己+主公可见,其他显示「暗」 ✅
 - 出杀→询问闪→不闪→伤害结算 P1 4→3 ✅
@@ -965,20 +1109,24 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - 弃牌 UI 可操作 ✅
 
 ## [Unreleased] — 2026-06-16
+
 ### 前端游戏流程修复 — 技能按钮/身份显示/延时锦囊/弃牌 UI/动画
 
 通过多模型协作(sensenova 浏览器视觉验证 + mimo-v2-pro/v2.5 代码审查与设计 + deepseek/M3 实现)定位并修复 5 个 P0 bug。
 
 #### Fixed
+
 - **P0 手牌点击无操作面板**: `GameView.tsx` 的 `useMemo` 中调用 async `registerSkillActions()` 未 await,Promise 被忽略,onMount→defineAction 从未执行,registry 永远为空。修复:改为 `useState`+`useEffect` 异步注册,await 完成后 setSkillActions 触发重渲染。(`src/client/components/GameView.tsx`)
 - **P0 身份不显示**: `buildView.ts` 的 players 映射未输出 identity 字段,前端永远拿不到身份信息。修复:buildView 加 `identity: p.vars['身份']`,GameView 类型加 `identity?: string`,座位卡片渲染彩色身份徽章(主公=金/忠臣=蓝/反贼=红/内奸=紫)。(`src/engine/view/buildView.ts`, `src/engine/types.ts`, `src/client/components/GameView.tsx`)
 - **P0 延时锦囊无法使用**: 前端发 `params.targets: number[]`(数组),后端乐不思蜀 validate 要 `params.target: number`(单数),契约错配导致 validate 拒绝。修复:新增 `DELAYED_TRICKS` set,延时锦囊发 `params.target`(单数),其他牌仍用 `targets`(数组)。(`src/client/components/GameView.tsx`)
 - **P0 弃牌阶段无弃牌**: 双层缺陷——(1)引擎:弃牌 respond 注册在 ownerId=-1,客户端用 perspectiveIdx 查找永远找不到;(2)前端:弃牌 UI 完全没实现(selectedForDiscard 死代码+handleDiscard 注释掉)。修复:dispatch 加系统级 respond fallback(ownerId 不匹配时回退查 -1),前端实现弃牌交互(手牌多选+确认弃牌按钮+倒计时)。(`src/engine/create-engine.ts`, `src/client/components/GameView.tsx`)
 
 #### Added
+
 - **前端动画系统**: 纯 CSS animation 实现(零额外依赖),包含摸牌滑入动画、出牌飞行动画、伤害闪烁+震动+红光覆盖、阶段过渡淡入、回合开始金色光环脉冲。通过 `useAnimationState` hook + ref diff 检测状态变化触发。(`src/client/animations.css`, `src/client/components/GameView.tsx`)
 
 #### Verified(浏览器完整游戏测试)
+
 - 技能按钮渲染:18 个操作按钮(杀/闪/桃/酒/装备/锦囊等)全部出现
 - 身份徽章:4 种身份(主公/忠臣/反贼/内奸)彩色显示
 - 出杀流程:选牌→选目标→出牌→询问闪→视角切换
@@ -987,17 +1135,20 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - 多轮游戏稳定性:第 2 轮状态正常无崩溃
 
 ## [Unreleased] — 2026-06-16
+
 ### 引擎核心修复 — dispatch pending slot 时序 + 多选择机制修复
 
 通过自动化玩家脚本完整模拟游戏(2人/4人局从开局到濒死求桃),定位并修复游戏完全卡死的根因。
 
 #### Fixed
+
 - **P0 dispatch respond 路径提前清除 pendingSlot**: `dispatch` 在 `entry.execute` 前执行 `state.pendingSlot = undefined`,导致 respond execute(如系统规则弃牌、桃救援)读不到 slot 信息。修复:保存 oldSlot 引用 → execute 前不清除 → execute 完成后才清除(仅当 pendingSlot===oldSlot 时) → promoteChoiceQueue。(`src/engine/create-engine.ts` dispatch)
 - **P0 选择询问 atom 未注册**: `atoms/选择询问.ts` 缺 `registerAtom()` 调用,`atoms/index.ts` 缺 import。修复:补注册和 import。(`src/engine/atoms/选择询问.ts`, `src/engine/atoms/index.ts`)
 - **P0 选择询问 requestType 不一致**: makeChoiceSlot 用 `__选择询问`(双下划线),skill validate 检查 `选择询问`(单下划线)。修复:统一为 `__选择询问`。(`src/engine/skills/选择询问.ts`)
 - **P0 dispatch respond 后未 promote choiceQueue**: 用户 respond 完成一个 pending 后,choiceQueue 中剩余 slot 永远不会被提升为 pendingSlot,导致多选择场景死锁。修复:dispatch `.then` 中清除 pendingSlot 后调用 `promoteChoiceQueue`。(`src/engine/create-engine.ts` dispatch)
 
 #### Verified(自动化玩家完整游戏模拟)
+
 - 出杀→询问闪→出闪/不闪→伤害结算 全链路
 - 杀 quota 扣减(每回合一次)
 - 回合切换(结束回合→弃牌阶段→下家回合)
@@ -1008,9 +1159,11 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - 4人局多玩家交替回合
 
 #### Changed
+
 - **前端布局修复**: `GameView.tsx` 的 `pageRoot` 加 `overflow-x: hidden`,`seatRowSpread`/`seatRowCenter` 加 `flex-wrap: wrap; gap`,修复玩家卡片被边缘裁切的 P0 布局 bug。(`src/client/components/GameView.tsx`)
 
 #### Removed(遗留测试跳过)
+
 - 96 个引用已删除 v2 模块(@engine/skill-hook, @engine/engine, @engine/mark, @engine/phase-advance 等)的遗留测试文件改为 `describe.skip` 跳过,不再报 import 解析错误。
 
 ### 多模型协作迭代 — 核心技能打磨 + UI 修复 + 死代码清理
@@ -1018,6 +1171,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 通过多模型协作（mimo-v2-pro 审查、M3/sensenova 浏览器测试、deepseek 批量清理）发现并修复多个关键 bug。
 
 #### Fixed
+
 - **P0 buildView debug 参数丢失**：`create-engine.ts` 的 `buildView` 包装函数未传递 `debug` 参数 → 调试模式只有 viewer 手牌可见，其余玩家手牌为 undefined。修复：包装函数加 `debug` 参数透传。(`src/engine/create-engine.ts`)
 - **P0 sendDebugGameState/getDebugView 漏传 debug**：`session.ts` 中 `sendDebugGameState`（行 188）和 `getDebugView`（行 271）调用 `buildView` 未传 `this.debug`。修复：补 `this.debug` 参数。(`src/server/session.ts`)
 - **P1 请求回应 timeout 被忽略**：`applyAtom` 只读 `def.pending.timeout`（hardcode 30s），忽略技能传入的 `atom.timeout`。修复：优先读 atom 字段，fallback 到 def。(`src/engine/create-engine.ts`)
@@ -1026,30 +1180,37 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **P2 寒冰剑未注册到牌堆**：`shared/cards/equipment.ts` 和 `shared/deck.ts` 补寒冰剑 CardDef + deck 条目。(`src/shared/cards/equipment.ts`, `src/shared/deck.ts`, `src/engine/cards/装备.ts`, `src/engine/cards/index.ts`, `src/shared/types.ts`)
 
 #### Changed
+
 - **武器卡补 range 字段**：`engine/cards/装备.ts` 的 `make()` 加 `range` 参数，所有武器补 range（诸葛连弩 1, 青釭剑/寒冰剑/雌雄双股剑 2, 贯石斧/青龙偃月刀/丈八蛇矛 3, 方天画戟 4, 麒麟弓 5）
 - **前端 UI 改进**：装备区独立显示（emoji+名称）、HP 三态预警（绿/橙/红）、pending 红色警示框+倒计时进度条+手牌金色高亮、座位编号标注。(`src/client/components/GameView.tsx`)
 
 #### Removed
+
 - **抽牌 atom 死代码**：从 `types.ts`、`atoms/抽牌.ts`、`atoms/index.ts` 删除（被摸牌取代，无调用方）
-- **24 个废弃前端组件**：GameBoard/MultiplayerGameBoard/ReplayBoard/NewEngineDemo/PlayerPanel/ActionPanel/HandCards/LogPanel/ReplayControls/DebugPlayerList/activePlayer.ts/game/*整个目录(11文件)/MultiplayerPage/ReplayPage/LobbyPage。App.tsx 路由精简为 3 条（`/`, `/debug`, `/debug/:roomId`），HomePage 移除废弃入口。
+- **24 个废弃前端组件**：GameBoard/MultiplayerGameBoard/ReplayBoard/NewEngineDemo/PlayerPanel/ActionPanel/HandCards/LogPanel/ReplayControls/DebugPlayerList/activePlayer.ts/game/\*整个目录(11文件)/MultiplayerPage/ReplayPage/LobbyPage。App.tsx 路由精简为 3 条（`/`, `/debug`, `/debug/:roomId`），HomePage 移除废弃入口。
 
 #### Added
+
 - `tests/integration/杀装备距离.test.ts` — 4 测试：装备范围扩大、出杀→出闪→伤害为 0、出杀→超时→扣血、诸葛连弩无限出杀
 - `tests/integration/弃牌阶段.test.ts` — 3 测试：手牌超限→弃牌 pending、fireTimeout 自动弃牌、手牌未超限→无 pending
 - `tests/integration/濒死求桃.test.ts` — 3 测试：出杀致死→濒死流程→无人救→击杀
 - `tests/integration/无懈可击.test.ts` — 2 passed 2 skipped（嵌套无纶的 dispatch respond 路径需重构）
 
 #### Fixed（补充第二轮）
+
 - **请求回应 validate 拒绝广播 target**：target=-2（无纶可击广播）导致 validate 失败，pending 不创建。修复：validate 允许 target<0 的特殊值。(`src/engine/atoms/请求回应.ts`)
 - **造成伤害 validate 拒绝 amount=0**：护甲减伤到 0 时 validate 报错，伤害静默取消。修复：允许 amount=0（apply 自然不扣血）。(`src/engine/atoms/造成伤害.ts`)
 
 #### Added（补充第二轮）
+
 - **弃牌阶段实装**：回合管理 阶段推进钩子中，进入弃牌阶段时检查手牌超限→创建弃牌 pending→系统规则注册 respond action→fireTimeout 自动弃最后 N 张。(`src/engine/skills/回合管理.ts`, `src/engine/skills/系统规则.ts`, `src/engine/create-engine.ts`)
 
 #### Removed（补充第二轮）
+
 - `src/engine/cards/装备.ts`、`基础.ts`、`锦囊.ts`、`index.ts` — 冗余 Card[] 牌堆实例（运行时用 shared/deck.ts，仅 characters/ 被引用）
 
 #### Verified
+
 - skills 项目：4 文件 13 passed 4 skipped
 - 新增 integration：杀装备距离 4 passed
 - 浏览览器实测：出杀→扣血→消耗手牌全链路通过、距离系统生效（徒手范围 1 打不到座位距离 2 的目标）、装备成功、所有玩家手牌可见（debug 模式修复）
@@ -1059,6 +1220,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 将 dispatch 从“await barrier”转为 fire-and-forget 输入分发器，广播时机从 dispatch 返回点移到 state 变更点（每次 applyAtom 结束）。并发安全（回应 vs 超时竞争）从 dispatch 层的 Promise.race 下移到 slot 层的定时器状态。
 
 #### Changed
+
 - **dispatch fire-and-forget**：同步跑 preceding/validate → `entry.execute(...).then(resolve)` 启动后立即返回，不等 pending 创建。旧 `_pendingSignal`/`_waitForStable`/`Promise.race` 机制全部移除。主动 action 的 execute 跑到 `applyAtom` 建 pending 时自然挂起；回应路径 `slot.pause()` 取消定时器让 respond execute 独占推进。递归 pending（无纶递归）下 respond execute 挂在新 pending 上，旧 slot 待整条链 resolve 后才恢复。(`src/engine/create-engine.ts` dispatch)
 - **PendingSlot 加 isTimeout/pause**：`isTimeout` 标记定时器已触发（dispatch 据此丢弃竞态中的用户 action）；`pause()` 取消定时器让 dispatch 走用户 action 路径。在 applyAtom 建 slot 时实现。(`src/engine/types.ts` PendingSlot, `src/engine/create-engine.ts` applyAtom)
 - **GameState 加 onStateChange 回调**：每次 applyAtom 结束（pushEvent 后、cancel 分支、pending 建好后）触发。删除旧的 `_pendingSignal` 字段。(`src/engine/types.ts` GameState)
@@ -1066,15 +1228,18 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **fireTimeout 注释更新**：广播由 applyAtom 内部的 onStateChange 驱动，不再用 pendingSignal。(`src/engine/create-engine.ts` fireTimeout)
 
 #### Removed
+
 - `setupPendingSignal`/`resolvePendingSignal`/`resolveSlot` helper（死代码）
 - `_pendingSignal` 字段（GameState）
 - dispatch 注释中过时的 pendingSignal/race 描述
 
 #### Added（测试适配）
+
 - `tests/engine-harness.ts` 导出 `waitForStable(state)`/`dispatchAndWait(state, msg)`/`fireTimeoutAndWait(state)`：dispatch fire-and-forget 后用轮询（setTimeout 0 yield）等到 pendingSlot 就绪或 execute 跑完。手写集成测试（直接用 dispatch、不经 SkillTestHarness）可用这些 helper。
 - 9 个直接用 `await dispatch` 的集成测试批量迁移到 `dispatchAndWait`/`fireTimeoutAndWait`。
 
 #### Verified
+
 - skills + integration：15 文件 42 passed 6 skipped
 - 类型检查：0 新错误（create-engine.ts/session.ts/types.ts 干净；types.ts 的 3 个 ViewEvent 索引签名错误为预存）
 - engine-smoke/server-gameplay/guanxing/serializer 的失败为历史遗留（改动前即失败，引用已删模块或旧 API）
@@ -1082,6 +1247,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 ## [Unreleased] — 2026-06-10
 
 ## [Unreleased] — 2026-06-15
+
 ### Identity Game — 身份局实现推进
 
 - **P0 核心**:
@@ -1094,6 +1260,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **sensenova 批量评估**:适合单文件规范明确的技能实现;技能间通信协议(标签/标记命名)需人工统一
 
 ## [Unreleased] — 2026-06-14
+
 ### Research — 武将技能研究文档补全(吴/群/蜀/魏 4 国)
 
 按 docs/research/武将技能.md 框架,补全 70+ 武将技能描述和规则注释:
@@ -1135,7 +1302,6 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 
 将 `src/engine/*` 整体迁至 `src/engine/_legacy/`(参考保留),在 `src/engine/` 重新实现新引擎核心(types/atom/settlement/skill/skill-loader/event-stream/create-engine)。首批交付 38 atom + 10 skill(4 基本牌 + 5 武将 6 技能)。
 
-
 ### Infrastructure — 集成收尾 + 测试框架 + 技能/atom 指南(2026-06-14)
 
 - **前后端集成收尾**:`skillActionRegistry`/`GameView`/`MultiplayerGameBoard` 的 ownerId/viewer 从 string 改 number(座次下标),对齐座次解耦。
@@ -1171,7 +1337,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
   - `cancel`:取消当前 atom,推 notify 事件(非静默),仁王盾/寒冰剑用此。
   - 折叠(folding)语义:before hooks 按注册顺序串行折叠,而非第一个 drop 就 break。
   - 修复 guard mark 永久残留 bug(藤甲/护甲 `scope:-1` 从不清理 → 只触发一次)。
-  (`types.ts` HookResult;`create-engine.ts` applyAtom 折叠循环;6 skill 迁移;`ENGINE-DESIGN.md` §4.2/4.5/6.1 更新)
+    (`types.ts` HookResult;`create-engine.ts` applyAtom 折叠循环;6 skill 迁移;`ENGINE-DESIGN.md` §4.2/4.5/6.1 更新)
 - **双重注册**:`instantiateSkill` 改幂等(先 `unloadSkillInstance` 再注册),修复 skill 实例重注册的 `already registered` 抛错。
   `bootstrap` 非幂等——已开局 state(玩家已发牌)重入直接抛错(状态变更不可回滚)。
 - **restore 取代 rebootstrap**:旧的 `rebootstrap`(遍历 player.skills 注册实例)逻辑错误。
@@ -1211,14 +1377,14 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - **dispatch 瘦身(纯路由+校验)**:删除两处 dispatch 违规逻辑,回归"匹配不到/校验失败即丢弃"。
   1. 删 `装备通用` 特殊路由(dispatch 原本检查 `card.type === '装备牌'` 改路由到 `装备通用`——dispatch 不该认识业务概念;该路径无测试覆盖,装备应通过 `skillId: '装备通用'` 路由)。
   2. 删回应路径无匹配 entry 时的 `Object.assign(frame.params, message.params)`(违反 §4.3 frame.params 只读)。
-  回应路径语义:pending 目标的回应无论是否有效(校验失败/无 entry)都必须 resolve slot——
-  目标不出牌即"未有效回应",父 execute(杀)继续结算;slot 保持挂起会死锁。
+     回应路径语义:pending 目标的回应无论是否有效(校验失败/无 entry)都必须 resolve slot——
+     目标不出牌即"未有效回应",父 execute(杀)继续结算;slot 保持挂起会死锁。
 
 ### Verified
+
 - 目标测试:`tests/integration/{new-engine-*,create-game,restore-from-log,dynamic-skill,system-owner-id}.test.ts tests/skill-tests/` 全绿(26+ passed | 4 skipped)
 - 全量基线:34 passed(新引擎),155 failed(v2 legacy 引用已删模块,预存)
 - `pnpm tsc --noEmit`:0 新引擎错误(types.ts 的 3 个 ViewEvent 索引签名错误为预存)
-
 
 ### Added
 
@@ -1265,6 +1431,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - `src/engine/*` 全部内容 → `src/engine/_legacy/*`(`src/engine/` 仅含新代码 + `_legacy/` 参考目录)
 
 ### Verified
+
 - `pnpm vitest run tests/engine-smoke.test.ts`: 4/4 passed
 - `pnpm vitest run tests/integration/new-engine-*.test.ts`: 9/9 passed
 - `pnpm vitest run tests/integration/server-gameplay.test.ts`: 2/2 passed
@@ -1291,6 +1458,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - 30+ skill e2e 测试(plan §6.2 列出)
 
 ### Documentation
+
 - 2 条新 ADR 待写(`src/engine/_legacy/` 清理时机 + v2 删除)
 
 ### Engine v3 P0 PR 5 — createEngine().dispatch() 完整实装
@@ -1325,6 +1493,7 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - `frame.apply(atom)` awaits 异步等待实装(目前是同步 resolve 占位)
 - settlement frame 超时/断线机制
 - 30+ skill e2e 测试覆盖
+
 ### Engine v3 ATOM_GAME_EVENTS 自动派发 — emitEvent 调用点从 11 处降至 4 处
 
 将 `ATOM_GAME_EVENTS` 自动 emitEvent 管道集成到 `applyAtoms` 主入口，消除手工 `emitEvent` 调用。
@@ -1341,30 +1510,29 @@ debug 模式下，孙权点制衡进入选牌面板后不操作，出牌窗口�
 - `engine/handlers/engine-utils.ts` — 删除 `applyDamage` 中手工 `emitEvent(受到伤害)` 调用（1 处）
 - `engine/phases/atoms.ts` — 删除 ATOM_GAME_EVENTS 手工调用代码块（3 处）
 
-
 ### Engine v3 阶段 D 准备 — 58 个 v2 stub 技能去 trigger + hasWushuang 改 v3 真相源
 
 为阶段 D（删 v2 基础设施：`state.triggers` / `emitEvent` / `registerSkill` / 全局 registry）做前置安全清理——所有空 handler 的占位 stub 技能去 v2 trigger 字段。
 
 ### Changed
 
-* `engine/handlers/card-handlers.ts` — `handleKillCard` 中 `hasWushuang` 判定从 `state.triggers.some(...)` 改用 `hasSkill(state, player, '无双')`（[P5-T2] v3 真相源：`PlayerState.skills`）
-* `tests/scenarios/蜀/卧龙诸葛.test.ts` — 火计/看破 注册检查从 `state.triggers` 断言改 `ctx.player('P1').skills`（v3 真相源）
-* `tests/scenarios/蜀/庞统.test.ts` — 连环 注册检查同上
+- `engine/handlers/card-handlers.ts` — `handleKillCard` 中 `hasWushuang` 判定从 `state.triggers.some(...)` 改用 `hasSkill(state, player, '无双')`（[P5-T2] v3 真相源：`PlayerState.skills`）
+- `tests/scenarios/蜀/卧龙诸葛.test.ts` — 火计/看破 注册检查从 `state.triggers` 断言改 `ctx.player('P1').skills`（v3 真相源）
+- `tests/scenarios/蜀/庞统.test.ts` — 连环 注册检查同上
 
 ### Removed
 
-* 58 个 v2 stub 技能（handler 是空 `[]`，v2 派发本就无效）删 `trigger` 字段：
-  * 5 个孤儿 stub 文件（无双/不屈/周泰/化身/新生）
-  * 22 个孤儿 stub 文件（乱武/倾国/制霸/双雄/咆哮/固政/天义/天香/急救/断肠/暴虐/武圣/流离/激将/缔盟/肉林/蛊惑/谦逊/酒池/鬼道/黄天/龙胆）
-  * 24 个多技能文件中的 stub 技能（华佗急救、董卓酒池肉林暴虐乱武、蔡文姬断肠、左慈化身新生、颜良文丑双雄、张角鬼道黄天、甄姬倾国、小乔天香、孙策制霸、陆逊谦逊、张飞咆哮、大乔流离、鲁肃缔盟、太史慈天义、张昭张纮固政、赵云龙胆、卧龙诸葛火计看破、庞统连环、吕布无双、火计/看破/连环/急救 4 个独立 stub 文件）
-  * 3 个孤儿 stub 文件（火计/看破/连环 完整清理）
+- 58 个 v2 stub 技能（handler 是空 `[]`，v2 派发本就无效）删 `trigger` 字段：
+  - 5 个孤儿 stub 文件（无双/不屈/周泰/化身/新生）
+  - 22 个孤儿 stub 文件（乱武/倾国/制霸/双雄/咆哮/固政/天义/天香/急救/断肠/暴虐/武圣/流离/激将/缔盟/肉林/蛊惑/谦逊/酒池/鬼道/黄天/龙胆）
+  - 24 个多技能文件中的 stub 技能（华佗急救、董卓酒池肉林暴虐乱武、蔡文姬断肠、左慈化身新生、颜良文丑双雄、张角鬼道黄天、甄姬倾国、小乔天香、孙策制霸、陆逊谦逊、张飞咆哮、大乔流离、鲁肃缔盟、太史慈天义、张昭张纮固政、赵云龙胆、卧龙诸葛火计看破、庞统连环、吕布无双、火计/看破/连环/急救 4 个独立 stub 文件）
+  - 3 个孤儿 stub 文件（火计/看破/连环 完整清理）
 
 ### Verified
 
-* `npx vitest run`: **1413 passed**, 40 skipped, 0 failed
-* v2 路径未破坏：剩余 109 个 v2 trigger 兜底技能继续工作（全是真实 handler）
-* `hasWushuang` 计算路径（吕布杀需 2 闪）行为不变
+- `npx vitest run`: **1413 passed**, 40 skipped, 0 failed
+- v2 路径未破坏：剩余 109 个 v2 trigger 兜底技能继续工作（全是真实 handler）
+- `hasWushuang` 计算路径（吕布杀需 2 闪）行为不变
 
 ### Engine v3 P5 T1 — chained 迁移 Mark 体系
 
