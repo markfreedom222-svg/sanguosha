@@ -307,18 +307,33 @@ function enumerateTransformActions(
       const wrapperName = action.transform ? action.transform(card).name : '杀';
       const shadowCardId = `${card.id}#${action.skillId}`;
 
+      // 目标语义由**产出牌自己的 use action** 决定(与出牌分支同源),而非 transform action 的
+      // targetFilter(那是为出杀方向设计的)。界龙胆 四向转化:酒→桃 产出【桃】(selfTarget,
+      // 自动以自己为目标)、桃→酒 产出【酒】(无目标牌);沿用 transform 的「其他角色」目标
+      // 会枚举出引擎必拒的动作(「只能对自己使用酒」/「桃只能对受伤角色使用」)。
+      // 产出牌无 use action(闪/无懈 等回应牌)时回退到 transform 自身规则。
+      const produced = findUseActionForCard(skillActions, { ...card, name: wrapperName });
+      const cardTargetFilter = produced ? getTargetFilter(produced.prompt) : targetFilter;
+      const cardRules = produced
+        ? derivePlayRules(cardTargetFilter, getSelfTarget(produced.prompt))
+        : rules;
+
       // 算合法目标（allowSelf 时含自己，与 enumeratePlayActions 同模式）
-      const validTargets = computeValidTargets(view, seatIndex, targetFilter, rules);
+      const validTargets = computeValidTargets(view, seatIndex, cardTargetFilter, cardRules);
       // 需要目标但无合法目标(如距离不够),跳过此牌
-      if (rules.needsTarget && !rules.selfTarget && validTargets.length === 0) continue;
+      if (cardRules.needsTarget && !cardRules.selfTarget && validTargets.length === 0) continue;
 
       const cardDesc = `${card.suit}${card.rank}`;
       // 转化杀同样受目标数上限约束(默认1;方天画戟看手牌数,天义拼点赢放宽到2)。
       // 转化杀非火杀,不传 damageType(界疠火仅对火杀生效)。
       const slashMax =
-        wrapperName === '杀' && rules.needsTarget && !rules.selfTarget
+        wrapperName === '杀' && cardRules.needsTarget && !cardRules.selfTarget
           ? viewSlashTargetMax(view, seatIndex, { name: '杀' })
           : undefined;
+      // selfTarget 产出牌(桃/酒):与 buildPlayParams 同源预填 targets=[自己]
+      const mainParams: EngineClientMessage['params'] = cardRules.selfTarget
+        ? { cardId: shadowCardId, targets: [seatIndex] }
+        : { cardId: shadowCardId };
       result.push({
         description:
           wrapperName === '杀' && slashMax && slashMax > 1
@@ -328,7 +343,7 @@ function enumerateTransformActions(
           skillId: wrapperName,
           actionType: 'use',
           ownerId: seatIndex,
-          params: { cardId: shadowCardId },
+          params: mainParams,
           preceding: [
             {
               skillId: action.skillId,

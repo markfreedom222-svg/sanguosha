@@ -147,8 +147,7 @@ export function GameViewComponentImpl({
   // perspectiveIdx 必须是有效座次索引。旁观者(无授权 viewer=-1)或越界时回退到座次 0,
   // 避免 view.players[perspectiveIdx] 为 undefined 导致渲染崩溃。
   // 旁观者看不到任何手牌(buildView 按原始 viewer=-1 过滤 hand),仅借用座次 0 做展示视角。
-  const perspectiveIdx =
-    view.viewer >= 0 && view.viewer < view.players.length ? view.viewer : 0;
+  const perspectiveIdx = view.viewer >= 0 && view.viewer < view.players.length ? view.viewer : 0;
   // 旁观者公开视图(viewer<0):看不到任何手牌,底栏借用座次 0 仅做展示视角。
   const isSpectating = view.viewer < 0;
   const [showIdentityReveal, setShowIdentityReveal] = useState(
@@ -252,8 +251,16 @@ export function GameViewComponentImpl({
 
   // 自动跳过决策(无法响应/策略跳过时代发 skip)。需在 send 定义后调用。
   useAutoSkip({
-    view, perspectiveIdx, skillActions, pendingRespondInfo, prefs: autoSkipPrefs,
-    canOperate, isPerspectiveAwaiting, markBroadcastSkipped, broadcastKey, send,
+    view,
+    perspectiveIdx,
+    skillActions,
+    pendingRespondInfo,
+    prefs: autoSkipPrefs,
+    canOperate,
+    isPerspectiveAwaiting,
+    markBroadcastSkipped,
+    broadcastKey,
+    send,
   });
 
   const play = usePlayInteraction(isMyTurn, canOperate, {
@@ -281,6 +288,7 @@ export function GameViewComponentImpl({
     selectedMultiTargets,
     selectedForDiscard,
     transformMode,
+    transformWrapperName,
     activeDistribute,
     isDistributeActive,
     distSelected,
@@ -342,8 +350,7 @@ export function GameViewComponentImpl({
     [isMyTurn, canOperate, skillActions, view, perspectiveIdx],
   );
   const isRespondableCard = useCallback(
-    (card: Card) =>
-      !isDistributeActive && isMyAwaiting && !!pendingRespondInfo?.cardFilter?.(card),
+    (card: Card) => !isDistributeActive && isMyAwaiting && !!pendingRespondInfo?.cardFilter?.(card),
     [isDistributeActive, isMyAwaiting, pendingRespondInfo],
   );
 
@@ -359,18 +366,14 @@ export function GameViewComponentImpl({
       if (card.name === '杀') {
         const max = viewSlashMax(view, perspectiveIdx);
         const used = viewSlashUsed(view, perspectiveIdx);
-        if (Number.isFinite(max) && used >= max)
-          return `本回合杀次数已用完（${used}/${max}）`;
+        if (Number.isFinite(max) && used >= max) return `本回合杀次数已用完（${used}/${max}）`;
         return '本回合不能使用杀（次数已尽或被限制）';
       }
       if (card.name === '桃') {
         const me = view.players[perspectiveIdx];
         if (me && me.health >= me.maxHealth) return '体力已满，不需要使用桃';
       }
-      if (
-        card.name === '酒' &&
-        view.players[perspectiveIdx]?.turnUsage?.['酒/usedThisTurn']
-      ) {
+      if (card.name === '酒' && view.players[perspectiveIdx]?.turnUsage?.['酒/usedThisTurn']) {
         return '本回合已使用过酒';
       }
       return '当前不满足使用条件（阶段/次数/目标限制）';
@@ -549,26 +552,24 @@ export function GameViewComponentImpl({
           //   弃牌多选。转化/distribute 模式的候选校验由 handleCardClick 内部分支兜底,
           //   键盘路径不绕过任何选中校验。输入框焦点过滤由 useHotkeys 统一处理。
           ...Object.fromEntries(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(
-              (n): [string, () => void] => [
-                String(n),
-                () => {
-                  const card = perspectiveHand[n === 0 ? 9 : n - 1];
-                  if (!card) return;
-                  const inFreePlay = isMyTurn && view.phase === '出牌' && !pending;
-                  const transformActive = !!transformMode && (isMyTurn || isRespondTransformContext);
-                  if (
-                    (inFreePlay && canPlayHandCard(card)) ||
-                    isRespondableCard(card) ||
-                    canDiscardClick ||
-                    transformActive ||
-                    isDistributeActive
-                  ) {
-                    handleCardClick(card);
-                  }
-                },
-              ],
-            ),
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n): [string, () => void] => [
+              String(n),
+              () => {
+                const card = perspectiveHand[n === 0 ? 9 : n - 1];
+                if (!card) return;
+                const inFreePlay = isMyTurn && view.phase === '出牌' && !pending;
+                const transformActive = !!transformMode && (isMyTurn || isRespondTransformContext);
+                if (
+                  (inFreePlay && canPlayHandCard(card)) ||
+                  isRespondableCard(card) ||
+                  canDiscardClick ||
+                  transformActive ||
+                  isDistributeActive
+                ) {
+                  handleCardClick(card);
+                }
+              },
+            ]),
           ),
         },
   );
@@ -604,270 +605,273 @@ export function GameViewComponentImpl({
       skillActions,
       send,
     }),
-    [view, perspectiveIdx, perspectiveName, isSpectating, canOperate, currentPlayerName, skillActions, send],
+    [
+      view,
+      perspectiveIdx,
+      perspectiveName,
+      isSpectating,
+      canOperate,
+      currentPlayerName,
+      skillActions,
+      send,
+    ],
   );
 
   return (
     <GameViewProvider value={ctxValue}>
-    {/* 等比缩放容器:内部按 900px 设计高度 + 流式画布宽渲染,整体 scale 适配视口 */}
-    <GameViewScaler fit={fit}>
-    <div className={styles.pageRoot}>
-      <OverlaysLayer
-        isCharSelectPending={isCharSelectPending}
-        charSelect={charSelect}
-        charSelectInProgress={charSelectInProgress}
-        showIdentityReveal={showIdentityReveal}
-        onIdentityConfirm={handleIdentityConfirm}
-        onAction={onAction}
-        overlaySlot={overlaySlot}
-        readOnly={readOnly}
-      />
-
-      <DevProfiler id="GameHeader">
-        <GameHeader
-          animTurnVersion={anim.turnVersion}
-          animPhaseVersion={anim.phaseVersion}
-          currentPlayerName={currentPlayerName}
-          headerSlot={
-            <HeaderToolbar prefs={autoSkipPrefs} onToggle={toggleAutoSkip}>
-              {headerSlot}
-            </HeaderToolbar>
-          }
-        />
-      </DevProfiler>
-
-      {/* ─── 主内容:战场区 + 右侧边栏 ─── */}
-      <div className={styles.mainContent}>
-        <div className={styles.battleField}>
-          {/* 牌桌中心装饰:纯视觉,不拦截交互 */}
-          <div className={styles.battleFieldDecor} />
-          {/* ─── 事件横幅(延时展示,非阻塞)+ 积压角标/跳过 + 粘性展示卡(常驻至操作) ─── */}
-          <EventBanner
-            current={currentEvent ?? null}
-            reveal={revealEvent}
-            pendingCount={pendingCount}
-            onSkip={onSkipEvents}
+      {/* 等比缩放容器:内部按 900px 设计高度 + 流式画布宽渲染,整体 scale 适配视口 */}
+      <GameViewScaler fit={fit}>
+        <div className={styles.pageRoot}>
+          <OverlaysLayer
+            isCharSelectPending={isCharSelectPending}
+            charSelect={charSelect}
+            charSelectInProgress={charSelectInProgress}
+            showIdentityReveal={showIdentityReveal}
+            onIdentityConfirm={handleIdentityConfirm}
+            onAction={onAction}
+            overlaySlot={overlaySlot}
+            readOnly={readOnly}
           />
-          {/* ─── 动作浮层+箭头(谁对谁用什么牌) ─── */}
-          <ActionOverlay current={currentEvent ?? null} />
 
-          {/* ─── 座位环 + 中央牌堆 + 底部操作坞 ─── */}
-          <div className={styles.seatingArea}>
-            <DevProfiler id="SeatArcLayout">
-              <SeatArcLayout
-                orderedPlayers={orderedPlayers}
-                currentPlayerName={currentPlayerName}
-                selectedNeedsTarget={
-                  (!!playRules && playRules.needsTarget) ||
-                  (isDistributeActive && !!activeDistribute?.externalTargetSelection) ||
-                  respondNeedsTarget ||
-                  skillTargetMode
-                }
-                selectedTargetNames={
-                  isDistributeActive && activeDistribute?.externalTargetSelection
-                    ? distTargetName
-                      ? [distTargetName]
-                      : []
-                    : playRules?.hasSlots
-                      ? [selectedTarget, selectedKillTarget].filter((n): n is string => !!n)
-                      : playRules?.multiTarget
-                        ? selectedMultiTargets
-                        : respondNeedsTarget
-                          ? respondTargetName
-                            ? [respondTargetName]
-                            : []
-                          : selectedTarget
-                            ? [selectedTarget]
-                            : []
-                }
-                isTargetable={isTargetable}
-                seatTargetInfo={seatTargetInfo}
-                broadcastSkipped={broadcastSkipped}
-                onTargetClick={handleTargetClick}
-                onSeatDoubleClick={onSeatDoubleClick}
-                damageFlashIndices={anim.damageFlashIndices}
-                healFlashIndices={anim.healFlashIndices}
-                hpChangeNumbers={anim.hpChangeNumbers}
-                turnVersion={anim.turnVersion}
-                disconnectedSeats={disconnectedSeats}
-                suppressCountdown={isPlayingFlipAnim}
-                bottomSlot={
-                  <>
-                    {isPerspectiveAwaiting &&
-                      pending &&
-                      !isDiscardPhase &&
-                      !isPlayingFlipAnim &&
-                      pending?.atom?.type !== '选将询问' &&
-                      pending.prompt.type !== 'distribute' && (
-                        <AwaitingPrompt
-                          pending={pending}
-                          pendingTargetIdx={pendingTargetIdx}
-                          perspectiveHand={perspectiveHand}
-                          pendingRespondInfo={pendingRespondInfo}
-                          broadcastKey={broadcastKey}
-                          skippedBroadcast={skippedBroadcast}
-                          processingPicks={processingPicks}
-                          autoSkipPrefs={autoSkipPrefs}
-                          onToggleAutoSkip={toggleAutoSkip}
-                        />
-                      )}
-                    <PlayPhasePrompt
-                      currentPlayerName={currentPlayerName}
-                      isPerspectiveTurn={isPerspectiveTurn}
-                      isPerspectiveAwaiting={isPerspectiveAwaiting}
-                      isDiscardPhase={isDiscardPhase}
-                      isMyTurn={isMyTurn}
-                      selectedCardId={selectedCardId}
-                      selectedTarget={selectedTarget}
-                      discardMin={discardMin}
-                      discardMax={discardMax}
-                      selectedForDiscard={selectedForDiscard}
-                    />
-
-                    {/* 倒计时条与 AwaitingPrompt 同步门控:翻牌动画期间不渲染,
-                        动画结束后与 prompt 同时出现且为真实剩余时间。
-                        不伪造暂停——服务端超时按真实时钟走,deadline 不可改。 */}
-                    {(isPerspectiveAwaiting || (isMyTurn && view.phase === '出牌')) &&
-                      !broadcastSkipped &&
-                      !readOnly &&
-                      !isPlayingFlipAnim && (
-                        <CountdownBar
-                          deadline={deadline}
-                          totalMs={deadlineTotalMs || DEFAULT_COUNTDOWN_TOTAL_MS}
-                        />
-                      )}
-
-                    {/* 转化模式(丈八蛇矛等多选转化)提示行:转化模式是另一套交互,
-                        「取消选择」已移至 actionBar 与出牌按钮同行,这里只保留转化提示 */}
-                    {transformMode && (
-                      <div className={styles.handHeader}>
-                        <span className={cx(styles.debugHint, styles.transformHint)}>
-                          ⚡ 转化模式:选
-                          {transformMode.minCards > 1 ? `${transformMode.minCards}张` : '1张'}
-                          {transformMode.wrapperName}
-                          {transformMode.minCards > 1
-                            ? `(${transformMode.selectedCardIds.length}/${transformMode.maxCards})`
-                            : ''}{' '}
-                          · 源技能 {displaySkillName(transformMode.skillId)}
-                        </span>
-                        <CancelButton
-                          label="取消转化"
-                          onClick={cancelTransform}
-                          hotkey="Esc"
-                        />
-                      </div>
-                    )}
-
-                    {showCenterActionBar && (
-                      <CenterActionBar
-                        play={play}
-                        pending={pending}
-                        isRespondPending={isRespondPending}
-                        respondCandidateCount={respondCandidateCount}
-                        showCancelSelection={showCancelSelection}
-                        showEndTurn={showEndTurn}
-                        isMyTurn={isMyTurn}
-                        isDiscardPhase={isDiscardPhase}
-                        isPerspectiveAwaiting={isPerspectiveAwaiting}
-                        discardMin={discardMin}
-                        discardMax={discardMax}
-                      />
-                    )}
-                  </>
-                }
-              />
-            </DevProfiler>
-
-            {/* 中央:处理区 + 出牌历史条(牌堆/弃牌计数已移至左下角 HUD) */}
-            <div className={styles.centerTable}>
-              <ZoneInfoBar />
-              <PlayHistoryStrip items={playHistoryItems} />
-            </div>
-
-            {/* 左下角:牌堆/弃牌堆计数(官方 p0 左下弃牌区位置;z-index 低于弹窗) */}
-            <div className={styles.zoneCornerHud}>
-              <ZoneCornerCounts />
-            </div>
-          </div>
-        </div>
-
-        {/* 右侧边栏:日志/聊天 */}
-        <div className={styles.rightSidebar}>
-          <InfoDock
-            chatMessages={chatMessages}
-            chatConfig={chatConfig}
-            onSendChat={onSendChat}
-            mySeatIndex={view.viewer}
-            embedded
-          />
-        </div>
-      </div>
-
-      {/* ─── 底栏:装备 | 手牌 | 我方武将 ─── */}
-      <div className={styles.bottomLayout}>
-        <EquipColumn
-          onSkillAction={handleSkillAction}
-          distCandidateEquipIds={activeDistribute ? new Set(activeDistribute.cardIds) : null}
-          distSelectedEquipIds={distSelected}
-          isDistributeActive={isDistributeActive}
-          onEquipCardClick={handleEquipCardClick}
-        />
-
-        <HandArea
-          play={play}
-          phase={view.phase}
-          isSpectating={isSpectating}
-          perspectiveHand={perspectiveHand}
-          spectatorHandCount={perspectivePlayer.handCount}
-          handListRef={handListRef}
-          orderedHand={orderedHand}
-          handleDragStart={handleDragStart}
-          handleDrop={handleDrop}
-          canPlayHandCard={canPlayHandCard}
-          isRespondableCard={isRespondableCard}
-          canDiscardClick={canDiscardClick}
-          disabledReason={handDisabledReason}
-          onCardDoubleClick={handleCardDoubleClick}
-          timeoutFallbackIds={discardFallbackIds}
-          isMyAwaiting={isMyAwaiting}
-          isMyTurn={isMyTurn}
-          onReorderHand={onReorderHand}
-        />
-
-        <div
-          className={cx(
-            styles.playerCardLarge,
-            isPerspectiveTurn && styles.playerCardTurn,
-            anim.damageFlashIndices.has(perspectiveIdx) && styles.seatShaking,
-            anim.damageFlashIndices.has(perspectiveIdx) && styles.seatDamageOverlay,
-            anim.healFlashIndices.has(perspectiveIdx) && styles.seatHealOverlay,
-            // 可选自己为目标(铁索连环含自己):高亮可点
-            selfTargetable && styles.seatCardClickable,
-            // 已选自己为目标:高亮选中
-            selfSelectedAsTarget && styles.seatCardTargeted,
-          )}
-          data-seat-index={perspectiveIdx}
-          onClick={() =>
-            selfTargetable && handleTargetClick(perspectiveName)
-          }
-        >
-          <DevProfiler id="PlayerCardLarge">
-            <PlayerCardLarge
-              viewer={view.viewer}
-              damageFlashIndices={anim.damageFlashIndices}
-              healFlashIndices={anim.healFlashIndices}
-              hpChange={anim.hpChangeNumbers.get(perspectiveIdx)}
-              isPerspectiveTurn={isPerspectiveTurn}
-              onSkillAction={handleSkillAction}
+          <DevProfiler id="GameHeader">
+            <GameHeader
+              animTurnVersion={anim.turnVersion}
+              animPhaseVersion={anim.phaseVersion}
+              currentPlayerName={currentPlayerName}
+              headerSlot={
+                <HeaderToolbar prefs={autoSkipPrefs} onToggle={toggleAutoSkip}>
+                  {headerSlot}
+                </HeaderToolbar>
+              }
             />
           </DevProfiler>
-        </div>
-      </div>
 
-      {/* ─── Lottie 特效层(顶层 fixed,不拦截交互)─── */}
-      <VfxLayer items={vfxItems} view={view} />
-    </div>
-    </GameViewScaler>
+          {/* ─── 主内容:战场区 + 右侧边栏 ─── */}
+          <div className={styles.mainContent}>
+            <div className={styles.battleField}>
+              {/* 牌桌中心装饰:纯视觉,不拦截交互 */}
+              <div className={styles.battleFieldDecor} />
+              {/* ─── 事件横幅(延时展示,非阻塞)+ 积压角标/跳过 + 粘性展示卡(常驻至操作) ─── */}
+              <EventBanner
+                current={currentEvent ?? null}
+                reveal={revealEvent}
+                pendingCount={pendingCount}
+                onSkip={onSkipEvents}
+              />
+              {/* ─── 动作浮层+箭头(谁对谁用什么牌) ─── */}
+              <ActionOverlay current={currentEvent ?? null} />
+
+              {/* ─── 座位环 + 中央牌堆 + 底部操作坞 ─── */}
+              <div className={styles.seatingArea}>
+                <DevProfiler id="SeatArcLayout">
+                  <SeatArcLayout
+                    orderedPlayers={orderedPlayers}
+                    currentPlayerName={currentPlayerName}
+                    selectedNeedsTarget={
+                      (!!playRules && playRules.needsTarget) ||
+                      (isDistributeActive && !!activeDistribute?.externalTargetSelection) ||
+                      respondNeedsTarget ||
+                      skillTargetMode
+                    }
+                    selectedTargetNames={
+                      isDistributeActive && activeDistribute?.externalTargetSelection
+                        ? distTargetName
+                          ? [distTargetName]
+                          : []
+                        : playRules?.hasSlots
+                          ? [selectedTarget, selectedKillTarget].filter((n): n is string => !!n)
+                          : playRules?.multiTarget
+                            ? selectedMultiTargets
+                            : respondNeedsTarget
+                              ? respondTargetName
+                                ? [respondTargetName]
+                                : []
+                              : selectedTarget
+                                ? [selectedTarget]
+                                : []
+                    }
+                    isTargetable={isTargetable}
+                    seatTargetInfo={seatTargetInfo}
+                    broadcastSkipped={broadcastSkipped}
+                    onTargetClick={handleTargetClick}
+                    onSeatDoubleClick={onSeatDoubleClick}
+                    damageFlashIndices={anim.damageFlashIndices}
+                    healFlashIndices={anim.healFlashIndices}
+                    hpChangeNumbers={anim.hpChangeNumbers}
+                    turnVersion={anim.turnVersion}
+                    disconnectedSeats={disconnectedSeats}
+                    suppressCountdown={isPlayingFlipAnim}
+                    bottomSlot={
+                      <>
+                        {isPerspectiveAwaiting &&
+                          pending &&
+                          !isDiscardPhase &&
+                          !isPlayingFlipAnim &&
+                          pending?.atom?.type !== '选将询问' &&
+                          pending.prompt.type !== 'distribute' && (
+                            <AwaitingPrompt
+                              pending={pending}
+                              pendingTargetIdx={pendingTargetIdx}
+                              perspectiveHand={perspectiveHand}
+                              pendingRespondInfo={pendingRespondInfo}
+                              broadcastKey={broadcastKey}
+                              skippedBroadcast={skippedBroadcast}
+                              processingPicks={processingPicks}
+                              autoSkipPrefs={autoSkipPrefs}
+                              onToggleAutoSkip={toggleAutoSkip}
+                            />
+                          )}
+                        <PlayPhasePrompt
+                          currentPlayerName={currentPlayerName}
+                          isPerspectiveTurn={isPerspectiveTurn}
+                          isPerspectiveAwaiting={isPerspectiveAwaiting}
+                          isDiscardPhase={isDiscardPhase}
+                          isMyTurn={isMyTurn}
+                          selectedCardId={selectedCardId}
+                          selectedTarget={selectedTarget}
+                          discardMin={discardMin}
+                          discardMax={discardMax}
+                          selectedForDiscard={selectedForDiscard}
+                        />
+
+                        {/* 倒计时条与 AwaitingPrompt 同步门控:翻牌动画期间不渲染,
+                        动画结束后与 prompt 同时出现且为真实剩余时间。
+                        不伪造暂停——服务端超时按真实时钟走,deadline 不可改。 */}
+                        {(isPerspectiveAwaiting || (isMyTurn && view.phase === '出牌')) &&
+                          !broadcastSkipped &&
+                          !readOnly &&
+                          !isPlayingFlipAnim && (
+                            <CountdownBar
+                              deadline={deadline}
+                              totalMs={deadlineTotalMs || DEFAULT_COUNTDOWN_TOTAL_MS}
+                            />
+                          )}
+
+                        {/* 转化模式(丈八蛇矛等多选转化)提示行:转化模式是另一套交互,
+                        「取消选择」已移至 actionBar 与出牌按钮同行,这里只保留转化提示 */}
+                        {transformMode && (
+                          <div className={styles.handHeader}>
+                            <span className={cx(styles.debugHint, styles.transformHint)}>
+                              ⚡ 转化模式:选
+                              {transformMode.minCards > 1 ? `${transformMode.minCards}张` : '1张'}
+                              {transformWrapperName ?? transformMode.wrapperName}
+                              {transformMode.minCards > 1
+                                ? `(${transformMode.selectedCardIds.length}/${transformMode.maxCards})`
+                                : ''}{' '}
+                              · 源技能 {displaySkillName(transformMode.skillId)}
+                            </span>
+                            <CancelButton label="取消转化" onClick={cancelTransform} hotkey="Esc" />
+                          </div>
+                        )}
+
+                        {showCenterActionBar && (
+                          <CenterActionBar
+                            play={play}
+                            pending={pending}
+                            isRespondPending={isRespondPending}
+                            respondCandidateCount={respondCandidateCount}
+                            showCancelSelection={showCancelSelection}
+                            showEndTurn={showEndTurn}
+                            isMyTurn={isMyTurn}
+                            isDiscardPhase={isDiscardPhase}
+                            isPerspectiveAwaiting={isPerspectiveAwaiting}
+                            discardMin={discardMin}
+                            discardMax={discardMax}
+                          />
+                        )}
+                      </>
+                    }
+                  />
+                </DevProfiler>
+
+                {/* 中央:处理区 + 出牌历史条(牌堆/弃牌计数已移至左下角 HUD) */}
+                <div className={styles.centerTable}>
+                  <ZoneInfoBar />
+                  <PlayHistoryStrip items={playHistoryItems} />
+                </div>
+
+                {/* 左下角:牌堆/弃牌堆计数(官方 p0 左下弃牌区位置;z-index 低于弹窗) */}
+                <div className={styles.zoneCornerHud}>
+                  <ZoneCornerCounts />
+                </div>
+              </div>
+            </div>
+
+            {/* 右侧边栏:日志/聊天 */}
+            <div className={styles.rightSidebar}>
+              <InfoDock
+                chatMessages={chatMessages}
+                chatConfig={chatConfig}
+                onSendChat={onSendChat}
+                mySeatIndex={view.viewer}
+                embedded
+              />
+            </div>
+          </div>
+
+          {/* ─── 底栏:装备 | 手牌 | 我方武将 ─── */}
+          <div className={styles.bottomLayout}>
+            <EquipColumn
+              onSkillAction={handleSkillAction}
+              distCandidateEquipIds={activeDistribute ? new Set(activeDistribute.cardIds) : null}
+              distSelectedEquipIds={distSelected}
+              isDistributeActive={isDistributeActive}
+              onEquipCardClick={handleEquipCardClick}
+            />
+
+            <HandArea
+              play={play}
+              phase={view.phase}
+              isSpectating={isSpectating}
+              perspectiveHand={perspectiveHand}
+              spectatorHandCount={perspectivePlayer.handCount}
+              handListRef={handListRef}
+              orderedHand={orderedHand}
+              handleDragStart={handleDragStart}
+              handleDrop={handleDrop}
+              canPlayHandCard={canPlayHandCard}
+              isRespondableCard={isRespondableCard}
+              canDiscardClick={canDiscardClick}
+              disabledReason={handDisabledReason}
+              onCardDoubleClick={handleCardDoubleClick}
+              timeoutFallbackIds={discardFallbackIds}
+              isMyAwaiting={isMyAwaiting}
+              isMyTurn={isMyTurn}
+              onReorderHand={onReorderHand}
+            />
+
+            <div
+              className={cx(
+                styles.playerCardLarge,
+                isPerspectiveTurn && styles.playerCardTurn,
+                anim.damageFlashIndices.has(perspectiveIdx) && styles.seatShaking,
+                anim.damageFlashIndices.has(perspectiveIdx) && styles.seatDamageOverlay,
+                anim.healFlashIndices.has(perspectiveIdx) && styles.seatHealOverlay,
+                // 可选自己为目标(铁索连环含自己):高亮可点
+                selfTargetable && styles.seatCardClickable,
+                // 已选自己为目标:高亮选中
+                selfSelectedAsTarget && styles.seatCardTargeted,
+              )}
+              data-seat-index={perspectiveIdx}
+              onClick={() => selfTargetable && handleTargetClick(perspectiveName)}
+            >
+              <DevProfiler id="PlayerCardLarge">
+                <PlayerCardLarge
+                  viewer={view.viewer}
+                  damageFlashIndices={anim.damageFlashIndices}
+                  healFlashIndices={anim.healFlashIndices}
+                  hpChange={anim.hpChangeNumbers.get(perspectiveIdx)}
+                  isPerspectiveTurn={isPerspectiveTurn}
+                  onSkillAction={handleSkillAction}
+                />
+              </DevProfiler>
+            </div>
+          </div>
+
+          {/* ─── Lottie 特效层(顶层 fixed,不拦截交互)─── */}
+          <VfxLayer items={vfxItems} view={view} />
+        </div>
+      </GameViewScaler>
     </GameViewProvider>
   );
 }

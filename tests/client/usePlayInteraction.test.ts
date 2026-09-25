@@ -396,6 +396,76 @@ function wushengAction(ownerId = 0): SkillActionDef {
   };
 }
 
+/** 龙胆(双向转化:杀↔闪)transform action。镜像引擎 skills/龙胆.ts onMount。 */
+function longdanAction(ownerId = 0): SkillActionDef {
+  return {
+    skillId: '龙胆',
+    ownerId,
+    actionType: 'transform',
+    label: '龙胆',
+    style: 'passive',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '龙胆',
+      cardFilter: {
+        filter: (c: Card) => c.name === '杀' || c.name === '闪',
+        min: 1,
+        max: 1,
+      },
+      targetFilter: { min: 1, max: 1, filter: (v, i) => v.players[i]?.alive === true },
+    },
+    transform: (card) => ({
+      name: card.name === '杀' ? '闪' : '杀',
+      sourceCardId: card.id,
+      fromSkill: '龙胆',
+    }),
+  };
+}
+
+/** 酒 use action:无目标牌(useCard prompt)。镜像引擎 skills/cards/酒.ts。 */
+function wineUseAction(ownerId = 0): SkillActionDef {
+  return {
+    skillId: '酒',
+    ownerId,
+    actionType: 'use',
+    label: '酒',
+    style: 'primary',
+    prompt: {
+      type: 'useCard',
+      title: '饮酒',
+      cardFilter: { filter: (c: Card) => c.name === '酒', min: 1, max: 1 },
+    },
+  };
+}
+
+/** 界龙胆(四向转化:杀↔闪 / 酒↔桃)transform action。镜像引擎 skills/界龙胆.ts onMount。 */
+function jieLongdanAction(ownerId = 0): SkillActionDef {
+  const MAP: Record<string, string> = { 杀: '闪', 闪: '杀', 酒: '桃', 桃: '酒' };
+  return {
+    skillId: '界龙胆',
+    ownerId,
+    actionType: 'transform',
+    label: '界龙胆',
+    style: 'passive',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '界龙胆',
+      cardFilter: {
+        filter: (c: Card) => ['杀', '闪', '酒', '桃'].includes(c.name),
+        min: 1,
+        max: 1,
+      },
+      // 为「出杀」方向声明的目标过滤(其他存活角色)
+      targetFilter: { min: 1, max: 3, filter: (v, i) => v.players[i]?.alive === true },
+    },
+    transform: (card) => ({
+      name: MAP[card.name] ?? card.name,
+      sourceCardId: card.id,
+      fromSkill: '界龙胆',
+    }),
+  };
+}
+
 /** 丈八蛇矛(多卡转化)use action:两牌当杀 */
 function zhangbaAction(ownerId = 0): SkillActionDef {
   return {
@@ -1424,6 +1494,80 @@ describe('usePlayInteraction · 转化模式(transformMode)', () => {
     expect(preceding).toEqual([
       { skillId: '乱击', actionType: 'transform', params: { cardIds: ['c-red-a', 'c-red-b'] } },
     ]);
+  });
+
+  // 回归:多向转化技(龙胆 杀↔闪)的方向必须跟随**选中的牌**,而非进入转化模式时
+  // 手牌里第一张匹配牌的产出名。旧实现 wrapperName 在进入模式时按手牌顺序钉死:
+  // 手牌里 杀 在前 → wrapperName='闪' → 闪.use 不存在 → 提交按钮消失,闪当杀不可用。
+  it('多向转化(龙胆):方向跟随选中牌——先杀后闪的手牌里选中闪 → 提交 杀.use', () => {
+    const send = vi.fn();
+    const killCard = makeCard({ id: 'c-kill2', name: '杀', suit: '♠', color: '黑' });
+    const dodgeCard = makeCard({ id: 'c-dodge', name: '闪', suit: '♥', color: '红' });
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [longdanAction(), killUseAction()],
+        perspectiveHand: [killCard, dodgeCard], // 杀 在前 → 进入模式时样本产出名 = 闪
+        send,
+      }),
+    );
+    act(() => result.current.handleSkillAction(longdanAction()));
+    expect(result.current.transformMode?.wrapperName).toBe('闪'); // 样本方向(手牌顺序)
+
+    // 选中闪 → 方向应为 杀(闪当杀),主 action 存在 → 可提交
+    act(() => result.current.handleCardClick(dodgeCard));
+    expect(result.current.transformWrapperName).toBe('杀');
+    expect(result.current.selectedUseAction?.skillId).toBe('杀');
+    expect(result.current.transformSubmit?.needsTarget).toBe(true); // 杀需要选目标
+    act(() => result.current.handleTargetClick('P1'));
+    expect(result.current.transformSubmit?.canSubmit).toBe(true);
+    act(() => result.current.handleTransformPlay('P1'));
+    expect(send.mock.calls[0][0]).toBe('杀');
+    expect(send.mock.calls[0][2]).toEqual({ cardId: 'c-dodge#龙胆', targets: [1] });
+    expect(send.mock.calls[0][3]).toEqual([
+      { skillId: '龙胆', actionType: 'transform', params: { cardId: 'c-dodge' } },
+    ]);
+  });
+
+  // 回归:界龙胆 四向转化 —— 桃当酒/酒当桃 的目标语义必须由**产出牌**决定。
+  // 沿用 transform action 自己的 targetFilter(为出杀设计的「其他角色」)会提交
+  // targets:[他人] → 引擎拒「只能对自己使用酒」/「桃只能对受伤角色使用」。
+  it('界龙胆 桃当酒:产出【酒】无目标;酒当桃:产出【桃】自动以自己为目标', () => {
+    const peach = makeCard({ id: 'c-peach2', name: '桃', suit: '♥', color: '红' });
+    const send1 = vi.fn();
+    const { result: r1 } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [jieLongdanAction(), wineUseAction(), peachUseAction()],
+        perspectiveHand: [peach],
+        send: send1,
+      }),
+    );
+    act(() => r1.current.handleSkillAction(jieLongdanAction()));
+    act(() => r1.current.handleCardClick(peach));
+    expect(r1.current.transformWrapperName).toBe('酒');
+    expect(r1.current.transformSubmit?.needsTarget).toBe(false);
+    act(() => r1.current.handleTransformPlay(''));
+    expect(send1.mock.calls[0][0]).toBe('酒');
+    expect(send1.mock.calls[0][2]).toEqual({ cardId: 'c-peach2#界龙胆' });
+
+    const wine = makeCard({ id: 'c-wine', name: '酒', suit: '♠', color: '黑' });
+    const send2 = vi.fn();
+    const { result: r2 } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [jieLongdanAction(), wineUseAction(), peachUseAction()],
+        perspectiveHand: [wine],
+        send: send2,
+      }),
+    );
+    act(() => r2.current.handleSkillAction(jieLongdanAction()));
+    act(() => r2.current.handleCardClick(wine));
+    expect(r2.current.transformWrapperName).toBe('桃');
+    expect(r2.current.transformSubmit?.needsTarget).toBe(false); // selfTarget 无需手选目标
+    act(() => r2.current.handleTransformPlay(''));
+    expect(send2.mock.calls[0][0]).toBe('桃');
+    expect(send2.mock.calls[0][2]).toEqual({ cardId: 'c-wine#界龙胆', targets: [0] }); // 自己
   });
 
   // 回归:组合约束(comboFilter)未在提交侧生效 → 玩家能选中不同花色的两张牌提交,

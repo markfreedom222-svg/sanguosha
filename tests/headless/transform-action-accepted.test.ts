@@ -322,3 +322,51 @@ describe('多卡转化组合约束:枚举出的每个组合都可被引擎接受
     expect(res.accepted, `${skillId} 枚举出的同花色组合必须被引擎接受`).toBe(true);
   });
 });
+
+// ─── 转化技的产出牌决定目标语义(界龙胆 四向:杀/闪/酒/桃) ───
+// 界龙胆 酒→桃 产出【桃】(selfTarget:自动以自己为目标)、桃→酒 产出【酒】(无目标牌)。
+// 枚举沿用 transform action 自己的 targetFilter(为出杀方向设计的「其他角色」)会枚举出
+// 引擎必拒的动作(「只能对自己使用酒」/「桃只能对受伤角色使用」),该方向整类不可用。
+describe('转化技产出牌的目标语义(界龙胆)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('酒当桃:产出【桃】按 selfTarget 预填自己,dispatch 被接受', async () => {
+    const jiu = mkCard('j1', '酒', '♠', '9');
+    const p0 = mkPlayer(0, 'P0', ['j1'], ['界龙胆', '酒', '桃', '回合管理']);
+    p0.health = 3; // 桃只能对受伤角色使用
+    const { state, actions } = await enumerateTransforms({
+      players: [p0, mkPlayer(1, 'P1', [], [])],
+      cardMap: { j1: jiu },
+      seat: 0,
+    });
+    const tf = actions.find((a) => a.message.skillId === '桃');
+    expect(tf, '客户端应枚举出酒当桃').toBeDefined();
+    expect(tf!.message.params.cardId).toBe('j1#界龙胆');
+    expect(tf!.message.params.targets).toEqual([0]); // 自己(桃 selfTarget)
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的酒当桃必须被引擎接受').toBe(true);
+  });
+
+  it('桃当酒:产出【酒】无目标(酒.use 是 useCard prompt)', async () => {
+    const peach = mkCard('t1', '桃', '♥', '3');
+    const { state, actions } = await enumerateTransforms({
+      players: [
+        mkPlayer(0, 'P0', ['t1'], ['界龙胆', '酒', '桃', '回合管理']),
+        mkPlayer(1, 'P1', [], []),
+      ],
+      cardMap: { t1: peach },
+      seat: 0,
+    });
+    const tf = actions.find((a) => a.message.skillId === '酒');
+    expect(tf, '客户端应枚举出桃当酒').toBeDefined();
+    expect(tf!.message.params.cardId).toBe('t1#界龙胆');
+    expect(tf!.message.params.targets).toBeUndefined(); // 无目标牌
+    expect(tf!.validTargets).toEqual([]);
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的桃当酒必须被引擎接受').toBe(true);
+  });
+});

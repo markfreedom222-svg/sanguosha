@@ -15,6 +15,7 @@
 import { useState, useCallback, useEffect, useMemo, type RefObject } from 'react';
 import type {
   Card,
+  CardWrapper,
   GameView,
   Json,
   DistributePrompt,
@@ -87,6 +88,10 @@ export interface TransformMode {
   selectedCardIds: string[];
   /** 转化牌的目标过滤;max>=1 需选目标(丈八蛇矛→杀),max=0 为 AOE 无需选目标(乱击→万箭齐发) */
   targetFilter?: TargetFilter;
+  /** 技能声明的转化回调(原卡 → 产出牌名)。方向必须由**当前选中的牌**决定:
+   *  多向转化技(龙胆 杀↔闪 / 界龙胆 杀/闪/酒/桃)按进入模式时手牌里第一张匹配牌
+   *  钉死方向,会让另一方向的主 action 不存在(按钮消失)或方向不符(引擎拒)。 */
+  transform?: (card: Card) => CardWrapper;
 }
 
 /** distribute 上下文(主动技 + 被动遗计统一) */
@@ -143,6 +148,9 @@ export interface PlayInteractionResult {
   selectedForDiscard: string[];
   // ─── 转化模式 ───
   transformMode: TransformMode | null;
+  /** 当前转化方向的产出牌名(由选中的牌决定;未选牌时为进入模式时的样本名)。
+   *  按钮文案与主 action 查找都用它——多向转化技的方向必须跟随选牌。 */
+  transformWrapperName: string | null;
   // ─── distribute ───
   distributeMode: { skillId: string; actionType: string; prompt: DistributePrompt } | null;
   activeDistribute: ActiveDistribute | null;
@@ -447,19 +455,36 @@ export function usePlayInteraction(
     ? (perspectiveHand.find((c) => c.id === selectedCardId) ?? null)
     : null;
 
+  // 转化方向 = 当前选中牌的产出牌名(而非进入模式时手牌里第一张匹配牌的产出名)。
+  // 未选牌时回退到进入模式时的样本名(仅用于按钮文案占位)。
+  const transformWrapperName = (() => {
+    if (!transformMode) return null;
+    const ids =
+      transformMode.minCards > 1
+        ? transformMode.selectedCardIds
+        : selectedCardId
+          ? [selectedCardId]
+          : [];
+    if (ids.length === 0 || !transformMode.transform) return transformMode.wrapperName;
+    const card =
+      perspectiveHand.find((c) => c.id === ids[0]) ??
+      (Object.values(perspectiveEquipment).includes(ids[0]) ? view.cardMap[ids[0]] : undefined);
+    if (!card || !transformMode.cardFilter(card)) return transformMode.wrapperName;
+    return transformMode.transform(card).name;
+  })();
+
   const selectedUseAction = (() => {
     if (transformMode) {
+      if (!transformWrapperName) return undefined;
       // 多卡转化(丈八蛇矛):selectedCardId 为 null,直接用包装牌的 use action
       if (transformMode.minCards > 1) {
         return skillActions.find(
-          (a) => a.actionType === 'use' && a.skillId === transformMode.wrapperName,
+          (a) => a.actionType === 'use' && a.skillId === transformWrapperName,
         );
       }
-      // 单卡转化(武圣):需选中一张卡
+      // 单卡转化(武圣/龙胆):需选中一张卡
       if (!selectedCard) return undefined;
-      return skillActions.find(
-        (a) => a.actionType === 'use' && a.skillId === transformMode.wrapperName,
-      );
+      return skillActions.find((a) => a.actionType === 'use' && a.skillId === transformWrapperName);
     }
     if (!selectedCard) return undefined;
     // altAction 覆盖:用户点了替代 use action(如断粮)后,用它而非默认匹配的主 use action。
@@ -856,6 +881,7 @@ export function usePlayInteraction(
               actionType,
               cardFilter: filter ?? (() => true),
               comboFilter: prompt.cardFilter.comboFilter,
+              transform: action.transform,
               wrapperName: sample ? action.transform(sample).name : skillId,
               minCards,
               maxCards,
@@ -888,6 +914,7 @@ export function usePlayInteraction(
                 actionType,
                 cardFilter: prompt.cardFilter.filter,
                 comboFilter: prompt.cardFilter.comboFilter,
+                transform: action.transform,
                 wrapperName,
                 minCards,
                 maxCards,
@@ -965,14 +992,15 @@ export function usePlayInteraction(
       if (!transformMode) return;
       // 回应路径(被要求打出某牌):转化后按 R.respond 打出,无目标
       // (询问杀→武圣/丈八蛇矛;询问闪→倾国/龙胆;广播无懈→看破)
-      if (isRespondTransformContext && transformMode.wrapperName === pendingRequestedName) {
+      if (!transformWrapperName) return;
+      if (isRespondTransformContext && transformWrapperName === pendingRequestedName) {
         if (transformMode.minCards > 1) {
           // 多卡转化(丈八蛇矛):2 张手牌当杀打出
           const ids = transformMode.selectedCardIds;
           if (ids.length < transformMode.minCards || ids.length > transformMode.maxCards) return;
           if (!transformComboOk(ids)) return; // 组合约束(同花色)不满足 → 不提交
           const shadowCardId = `${ids.join('#')}#${transformMode.skillId}`;
-          send(transformMode.wrapperName, 'respond', { cardId: shadowCardId }, [
+          send(transformWrapperName, 'respond', { cardId: shadowCardId }, [
             {
               skillId: transformMode.skillId,
               actionType: transformMode.actionType,
@@ -988,7 +1016,7 @@ export function usePlayInteraction(
         const targetCard = perspectiveHand.find((c) => c.id === selectedCardId);
         if (!targetCard) return;
         const shadowCardId = `${selectedCardId}#${transformMode.skillId}`;
-        send(transformMode.wrapperName, 'respond', { cardId: shadowCardId }, [
+        send(transformWrapperName, 'respond', { cardId: shadowCardId }, [
           {
             skillId: transformMode.skillId,
             actionType: transformMode.actionType,
@@ -1000,10 +1028,16 @@ export function usePlayInteraction(
         setSelectedTarget(null);
         return;
       }
-      // AOE 转化(乱击→万箭齐发)targetFilter.max=0,无需选目标,直接提交。
-      const needsTarget = transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true;
-      const idx = needsTarget ? nameToIndex(targetName) : -1;
-      if (needsTarget && idx < 0) return;
+      // 目标语义由产出牌自己的 use action 决定(playRules 来自 selectedUseAction):
+      // 酒(useCard,无目标)/桃(selfTarget,自动以自己为目标)/杀(攻击范围内选目标)。
+      // 沿用 transform action 自己的 targetFilter 会把「对他人」的目标塞给 酒/桃 → 引擎恒拒。
+      const needsManualTarget = playRules
+        ? playRules.needsTarget && !playRules.selfTarget
+        : transformMode.targetFilter
+          ? transformMode.targetFilter.max >= 1
+          : true;
+      const idx = needsManualTarget ? nameToIndex(targetName) : -1;
+      if (needsManualTarget && idx < 0) return;
 
       if (transformMode.minCards > 1) {
         const ids = transformMode.selectedCardIds;
@@ -1011,8 +1045,9 @@ export function usePlayInteraction(
         if (!transformComboOk(ids)) return; // 组合约束(同花色)不满足 → 不提交
         const shadowCardId = `${ids.join('#')}#${transformMode.skillId}`;
         const mainParams: Record<string, Json> = { cardId: shadowCardId };
-        if (needsTarget) mainParams.targets = [idx];
-        send(transformMode.wrapperName, 'use', mainParams, [
+        if (playRules?.selfTarget) mainParams.targets = [perspectiveIdx];
+        else if (needsManualTarget) mainParams.targets = [idx];
+        send(transformWrapperName, 'use', mainParams, [
           {
             skillId: transformMode.skillId,
             actionType: transformMode.actionType,
@@ -1025,8 +1060,9 @@ export function usePlayInteraction(
         if (!targetCard) return;
         const shadowCardId = `${selectedCardId}#${transformMode.skillId}`;
         const mainParams: Record<string, Json> = { cardId: shadowCardId };
-        if (needsTarget) mainParams.targets = [idx];
-        send(transformMode.wrapperName, 'use', mainParams, [
+        if (playRules?.selfTarget) mainParams.targets = [perspectiveIdx];
+        else if (needsManualTarget) mainParams.targets = [idx];
+        send(transformWrapperName, 'use', mainParams, [
           {
             skillId: transformMode.skillId,
             actionType: transformMode.actionType,
@@ -1040,12 +1076,15 @@ export function usePlayInteraction(
     },
     [
       transformMode,
+      transformWrapperName,
       transformComboOk,
       isRespondTransformContext,
       pendingRequestedName,
       nameToIndex,
       selectedCardId,
       perspectiveHand,
+      perspectiveIdx,
+      playRules,
       send,
     ],
   );
@@ -1454,9 +1493,14 @@ export function usePlayInteraction(
           : [];
     const enough = ids.length >= transformMode.minCards && ids.length <= transformMode.maxCards;
     const comboOk = transformComboOk(ids);
+    // 目标语义由产出牌的 use action 决定(酒无目标 / 桃 selfTarget / 杀 选目标)
     const needsTarget =
       !isRespondTransformContext &&
-      (transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true);
+      (playRules
+        ? playRules.needsTarget && !playRules.selfTarget
+        : transformMode.targetFilter
+          ? transformMode.targetFilter.max >= 1
+          : true);
     const canSubmit = enough && comboOk && (!needsTarget || !!selectedTarget);
     return { needsTarget, canSubmit };
   })();
@@ -1493,6 +1537,7 @@ export function usePlayInteraction(
     selectedMultiTargets,
     selectedForDiscard,
     transformMode,
+    transformWrapperName,
     distributeMode,
     activeDistribute,
     isDistributeActive,
