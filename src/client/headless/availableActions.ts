@@ -59,6 +59,23 @@ function computeValidTargets(
   return validTargets;
 }
 
+/** 目标数上下界(prompt.targetFilter 的投影)。
+ *  仅在「需要目标且非自动自身目标」时给值:min 缺省 1(不设字段),max 缺省 1(不设字段)。
+ *  引擎 validate 用同一份 targetFilter 判定,AI 少了这个下界就只会填 1 个目标 →
+ *  离间(两名男性角色)一类多目标技能恒拒。 */
+function targetBounds(
+  targetFilter: TargetFilter | null | undefined,
+  rules: PlayRules,
+): { minTarget?: number; maxTarget?: number } {
+  if (!rules.needsTarget || rules.selfTarget) return {};
+  const min = targetFilter?.min ?? 1;
+  const max = targetFilter?.max ?? 1;
+  return {
+    ...(min > 1 ? { minTarget: min } : {}),
+    ...(max > 1 ? { maxTarget: max } : {}),
+  };
+}
+
 /** 出牌阶段枚举主动可出的牌。 */
 function enumeratePlayActions(
   view: GameView,
@@ -98,6 +115,7 @@ function enumeratePlayActions(
       card.name === '杀' && rules.needsTarget && !rules.selfTarget
         ? viewSlashTargetMax(view, seatIndex, card)
         : undefined;
+    const bounds = targetBounds(targetFilter, rules);
     result.push({
       description:
         rules.needsTarget && !rules.selfTarget
@@ -108,6 +126,7 @@ function enumeratePlayActions(
       message,
       validTargets,
       category: 'play',
+      ...bounds,
       ...(slashMax !== undefined ? { maxTarget: slashMax } : {}),
     });
   }
@@ -241,6 +260,7 @@ function enumerateTransformActions(
           if (!combosOk(c1, c2)) continue;
           const shadowCardId = `${c1.id}#${c2.id}#${action.skillId}`;
           const desc = `${c1.suit}${c1.rank}+${c2.suit}${c2.rank}`;
+          const bounds = targetBounds(targetFilter, rules);
           result.push({
             description:
               wrapperName === '杀' && slashMax && slashMax > 1
@@ -262,6 +282,7 @@ function enumerateTransformActions(
             },
             validTargets,
             category: 'transform',
+            ...bounds,
             ...(slashMax !== undefined ? { maxTarget: slashMax } : {}),
           });
         }
@@ -466,8 +487,12 @@ function enumerateAltActions(
         : rules.needsTarget && !rules.hasSlots
           ? { cardId: card.id }
           : buildPlayParams(view.players, seatIndex, card, rules, null, null);
+      const bounds = targetBounds(targetFilter, rules);
       result.push({
-        description: `${action.label}(${cardDesc})`,
+        description:
+          bounds.minTarget && bounds.minTarget > 1
+            ? `${action.label}(${cardDesc}) 选择目标(需 ${bounds.minTarget} 个)`
+            : `${action.label}(${cardDesc})`,
         message: {
           skillId: action.skillId,
           actionType: action.actionType,
@@ -477,6 +502,7 @@ function enumerateAltActions(
         },
         validTargets,
         category: 'play',
+        ...bounds,
       });
     }
   }
@@ -564,6 +590,24 @@ function enumeratePromptActions(
         .map((p) => p.index);
     }
     if (validTargets.length === 0) continue;
+
+    // 多目标技能(selectTarget 且 targetFilter.min>1,如「两名男性角色」类):
+    // 逐目标展开的 action 每个只带 1 个目标 → 引擎 validate 必拒「目标数不足」。
+    // 改为一个描述性 action:validTargets 给全集,minTarget/maxTarget 给边界,
+    // agent 据此选 minTarget..maxTarget 个(与 choosePlayer 多选分支同构)。
+    if (prompt.type === 'selectTarget' && (prompt.targetFilter.min ?? 1) > 1) {
+      const min = prompt.targetFilter.min ?? 1;
+      const max = prompt.targetFilter.max ?? min;
+      result.push({
+        description: `发动【${action.label}】(选 ${min}${max > min ? `-${max}` : ''} 个目标)`,
+        message: { ...base, params: { targets: [] } },
+        validTargets,
+        category: 'play',
+        minTarget: min,
+        ...(max > 1 ? { maxTarget: max } : {}),
+      });
+      continue;
+    }
 
     // paramVariants(强袭代价 等):每个变体一个 action;缺省单个无额外参数的变体
     const variants =

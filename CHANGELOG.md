@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — 2026-09-26
 
+### Fixed — 多目标技能枚举契约缺目标数下界:AI/MCP 只填 1 个目标 → 恒拒空转
+
+`离间` 一类技能要求「两名男性角色」(`prompt.targetFilter.min = max = 2`),而
+`AvailableAction` 只有 `validTargets`(候选全集)与 `maxTarget`(上限,未设默认 1)——
+AI/MCP 客户端按文档「选 1~maxTarget 个」只会填 1 个目标,提交恒被拒
+「需要选择两名男性角色」。启发式评分是确定性的,反复挑中同一非法动作即空转:
+随机自对弈实测单局 `REJECT:离间:use` 42 次。同理 `selectTarget` 且 `min>1` 的技能此前
+被逐目标展开成「每个目标一个 action」(每个只带 1 个目标),整类必然被拒。
+
+#### Changed
+
+- `AvailableAction` 新增 `minTarget`(`src/client/headless/types.ts`):目标数下界,
+  与 `maxTarget` 成对,缺省按 1 处理。
+- `enumeratePlayActions` / `enumerateAltActions` / 多卡 `enumerateTransformActions`:
+  统一用 `targetBounds()` 从 `prompt.targetFilter` 投影 `minTarget`/`maxTarget`;
+  离间一类 action 的描述同步标注「需 N 个」。
+- `enumeratePromptActions`:`selectTarget` 且 `min>1` 时改为单个描述性 action
+  (validTargets 给全集 + 边界字段),不再逐目标展开成必拒的单目标 action。
+- `choosePlayer` / `selectTarget` 多选分支补结构化 `minTarget`/`maxTarget`
+  (此前只有描述文本)。
+- `plugin/skills/sanguosha-play/SKILL.md`:提交规则改为「选 `minTarget`~`maxTarget` 个」。
+
+#### 测试
+
+- 新增 `tests/headless/multi-target-contract.test.ts`:离间 action 带 `minTarget=2`、
+  按上界填满被接受、只填 1 个被拒(锁住「下界不是摆设」)、单目标牌不受影响。
+
+## [Unreleased] — 2026-09-26
+
 ### Fixed — 主公技缺主公位门槛:非主公座次枚举出引擎必拒的 use action
 
 `激将`/`界激将`/`界制霸` 的引擎 validate 一律以「主公固定 0 号位」(`ownerId === 0`)为门槛,

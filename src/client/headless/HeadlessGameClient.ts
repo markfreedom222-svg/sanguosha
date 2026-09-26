@@ -782,7 +782,9 @@ export class HeadlessGameClient {
             });
           }
         } else {
-          // 多选：描述性 action，agent 需从 validTargets 填 targets
+          // 多选：描述性 action，agent 需从 validTargets 填 targets。
+          // minTarget/maxTarget 与描述文本同源(prompt.min/max):结构化字段让
+          // agent 不必解析描述文本即可知道要选几个。
           out.push({
             description: `${choosePrompt.title ?? info.skillId}（选 ${min}-${max} 个目标）`,
             message: {
@@ -794,6 +796,8 @@ export class HeadlessGameClient {
             },
             validTargets,
             category: 'respond',
+            ...(min > 1 ? { minTarget: min } : {}),
+            maxTarget: max,
           });
         }
         return;

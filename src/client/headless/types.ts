@@ -79,6 +79,11 @@ export interface AvailableAction {
   message: EngineClientMessage;
   /** 合法目标座次列表（无目标操作为空）；cardFilter/targetFilter 已跑过 */
   validTargets: number[];
+  /** 目标数下限：prompt.targetFilter.min 的投影(如 离间「两名男性角色」min=2)。
+   *  与 maxTarget 成对使用:AI 必须从 validTargets 中选 minTarget..maxTarget 个。
+   *  缺失时按 1 处理。少了这个下界,AI 只会填 1 个目标 → 引擎恒拒
+   *  「需要选择两名男性角色」(fuzz 实测单局 42 次空转)。 */
+  minTarget?: number;
   /** 目标数上限：仅杀等可多目标的操作设置（受方天画戟/天义/界疠火放宽）。
    *  AI 据此从 validTargets 中选不超过 maxTarget 个；未设时默认 1。
    *  后端 canUseSlash 是权威闸门，此处仅为提示，避免 AI 选了却被拒。 */
