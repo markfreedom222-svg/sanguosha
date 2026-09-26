@@ -966,3 +966,68 @@ describe('GameView:转化技回应窗口(倾国 黑牌当闪)', () => {
     ]);
   });
 });
+
+// 回归:chooseOption 型主动技(决堰:废除哪个装备栏)在浏览器无按钮、无法发动。
+// PlayerCardLarge 的 triggerableActions 过滤缺 chooseOption → 按钮不渲染;
+// handleSkillAction 也没有提交 params.option 的分支(default 只发 extraParams)。
+// 无头/AI 客户端(availableActions 的 enumeratePromptActions)早已支持 chooseOption,
+// 只有浏览器整类不可达 —— 玩家点不到按钮,技能在真实对局里等于不存在。
+describe('GameView:chooseOption 型主动技按钮(决堰)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('决堰渲染为按选项展开的按钮,点击提交 {option}', async () => {
+    const onAction = vi.fn();
+    const view = makeView({
+      players: [
+        {
+          index: 0,
+          name: 'P1',
+          character: '陆抗',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['决堰'],
+          handCount: 1,
+          hand: [makeCard('c1', '杀')],
+          marks: [],
+        },
+        {
+          index: 1,
+          name: 'P2',
+          character: '孙权',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: [],
+          handCount: 1,
+          marks: [],
+        },
+      ],
+    });
+    render(<GameViewComponent view={view} onAction={onAction} />);
+
+    // 每个选项一个按钮(武器/防具/坐骑/宝物)
+    const weaponBtn = await screen.findByRole('button', { name: '决堰·武器' });
+    expect(screen.getByRole('button', { name: '决堰·防具' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '决堰·坐骑' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '决堰·宝物' })).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(weaponBtn);
+    });
+
+    await waitFor(() => {
+      expect(onAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillId: '决堰',
+          actionType: 'use',
+          params: expect.objectContaining({ option: '武器' }),
+        }),
+      );
+    });
+  });
+});

@@ -99,6 +99,7 @@ export function PlayerCardLargeImpl({
   const triggerableActions = skillActions.filter(
     (a) =>
       a.prompt.type === 'confirm' ||
+      a.prompt.type === 'chooseOption' ||
       a.prompt.type === 'choosePlayer' ||
       a.prompt.type === 'selectTarget' ||
       (a.prompt.type === 'useCardAndTarget' && !!a.transform) ||
@@ -262,7 +263,7 @@ export function PlayerCardLargeImpl({
                   key={v.label ? `${s}:${v.label}` : s}
                   as="button"
                   name={display}
-                  description={v.label ? `${desc ?? ''}(${v.label})` : desc}
+                  description={v.description ?? (v.label ? `${desc ?? ''}(${v.label})` : desc)}
                   className={cx(styles.skillBtn, skillBtnVariant(v.action.style))}
                   onClick={() => onSkillAction(v.action, v.params)}
                 >

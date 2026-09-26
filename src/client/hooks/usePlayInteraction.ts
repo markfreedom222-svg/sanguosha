@@ -986,6 +986,12 @@ export function usePlayInteraction(
           setSelectedCardId(null);
           setSelectedTarget(null);
           return;
+        case 'chooseOption':
+          // chooseOption 型主动技(决堰:废除哪个装备栏):选项值由按钮变体放进 extraParams
+          // (skillActionVariants 每个选项展开一个按钮 → params.option)。缺 option 说明按钮
+          // 未按变体渲染,直接不发 —— 与 pending 侧 send(skillId,'respond',{option}) 同源。
+          if (typeof params.option !== 'string') return;
+          break;
         default:
           break;
       }

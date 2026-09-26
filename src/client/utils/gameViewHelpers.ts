@@ -233,17 +233,34 @@ export function resolveDistributeCardIds(
  *  - selectTarget + prompt.paramVariants(强袭代价二选一「失去体力/弃武器」):
  *    每个变体一个按钮,点击时把变体 params(cost)并入提交参数——否则单按钮提交缺 cost,
  *    引擎 validate 恒拒(「cost 必须为 hp 或 discard」),技能在浏览器上无法发动。
+ *  - chooseOption(决堰:废除哪个装备栏):每个选项一个按钮,点击即提交 `params.option`。
+ *    与 pending 侧 AwaitingPrompt 的 chooseOption 渲染、无头 enumeratePromptActions 的
+ *    展开同源(同一份 prompt.options)。此前浏览器既不在 triggerableActions 里收 chooseOption,
+ *    也没有提交 option 的分支 → 整类主动技在浏览器不可达(只有 AI 客户端能用)。
  *  - 其余(confirm/choosePlayer/selectTarget 无变体):单个按钮,label 为空 = 用技能名作按钮文本。
  *  与无头客户端 enumeratePromptActions 的变体展开同源(同一份 prompt.paramVariants 声明)。 */
-export function skillActionVariants(
-  action: SkillActionDef,
-): Array<{ label: string; params: Record<string, Json>; cardFilter?: (card: Card) => boolean }> {
+export function skillActionVariants(action: SkillActionDef): Array<{
+  label: string;
+  params: Record<string, Json>;
+  cardFilter?: (card: Card) => boolean;
+  /** 按钮 tooltip 用的补充说明(chooseOption 的选项效果文案) */
+  description?: string;
+}> {
   const prompt = action.prompt;
   if (prompt.type === 'selectTarget' && prompt.paramVariants?.length) {
     return prompt.paramVariants.map((v) => ({
       label: v.label,
       params: v.params,
       ...(v.cardFilter ? { cardFilter: v.cardFilter } : {}),
+    }));
+  }
+  if (prompt.type === 'chooseOption') {
+    // 按钮文本用短名(value),完整效果文案(label)进 tooltip —— 技能区是紧凑卡片,
+    // 放不下「武器栏 — 使用杀的限制次数+3」这类长文案。
+    return prompt.options.map((opt) => ({
+      label: opt.value,
+      params: { option: opt.value },
+      description: opt.label,
     }));
   }
   return [{ label: '', params: {} }];

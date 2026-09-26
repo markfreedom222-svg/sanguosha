@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — 2026-09-26
 
+### Fixed — chooseOption 型主动技(决堰)在浏览器无按钮、提交缺 option
+
+`决堰`(废除一个装备栏)的 `use` action 用 `chooseOption` prompt 声明四个选项,无头/AI 客户端
+(`enumeratePromptActions`)早已按选项展开成 action,但浏览器两条路径都进不去:
+`PlayerCardLarge` 的 `triggerableActions` 过滤不含 `chooseOption`(按钮不渲染),
+`handleSkillAction` 也没有提交 `params.option` 的分支(`default` 只发按钮变体参数)。
+玩家在真实对局里看不到【决堰】按钮 —— 只有 AI 能用。
+
+#### Changed
+
+- `skillActionVariants`(`src/client/utils/gameViewHelpers.ts`):`chooseOption` 每个选项展开为
+  一个按钮变体(`params.option = value`,完整效果文案进 tooltip),与 pending 侧
+  `AwaitingPrompt` 的 chooseOption 渲染、无头枚举同源(同一份 `prompt.options`)。
+- `PlayerCardLarge`:`triggerableActions` 纳入 `chooseOption`;按钮 tooltip 支持变体自带说明。
+- `handleSkillAction`:补 `case 'chooseOption'` —— 缺 `params.option` 不发(与
+  `send(skillId,'respond',{option})` 同源),避免提交引擎必拒的空参数。
+
+#### 测试
+
+- `tests/integration/gameview-skill-button.test.tsx` 追加决堰用例:四个选项各渲染一个按钮,
+  点击武器栏按钮提交 `{skillId:'决堰', actionType:'use', params:{option:'武器'}}`。
+
+## [Unreleased] — 2026-09-26
+
 ### Fixed — 多目标技能枚举契约缺目标数下界:AI/MCP 只填 1 个目标 → 恒拒空转
 
 `离间` 一类技能要求「两名男性角色」(`prompt.targetFilter.min = max = 2`),而
