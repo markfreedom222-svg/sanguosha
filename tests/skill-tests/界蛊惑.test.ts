@@ -105,7 +105,7 @@ describe('界蛊惑', () => {
     const P2 = harness.player('P2');
 
     // 界于吉扣置真杀,声明为杀,目标 P1
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 1 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 1 });
 
     // 顺序质疑:先问 P1
     expect(activeTargets(harness.state)).toEqual([1]);
@@ -135,7 +135,7 @@ describe('界蛊惑', () => {
     const P2 = harness.player('P2');
 
     // 界于吉扣置真杀,声明为杀,目标 P2
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 2 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 2 });
     await P1.pass(); // 不质疑
     await P2.pass(); // 不质疑 → 无人质疑 → 杀生效
     await harness.waitForStable();
@@ -162,7 +162,7 @@ describe('界蛊惑', () => {
     const P2 = harness.player('P2');
 
     // 界于吉扣置真杀,声明杀,目标 P2
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 2 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 2 });
     // 顺序询问窗口:先 P1
     expect(activeTargets(harness.state)).toEqual([1]);
 
@@ -202,7 +202,7 @@ describe('界蛊惑', () => {
     const P1 = harness.player('P1');
     const P2 = harness.player('P2');
 
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 2 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 2 });
     await P1.respond('界蛊惑', { choice: true }); // P1 质疑
     await P2.pass();
     await harness.waitForStable();
@@ -231,7 +231,7 @@ describe('界蛊惑', () => {
     const P1 = harness.player('P1');
     const P2 = harness.player('P2');
 
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 2 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 2 });
     await P1.respond('界蛊惑', { choice: true }); // P1 质疑
     await P2.pass();
     await harness.waitForStable();
@@ -256,7 +256,7 @@ describe('界蛊惑', () => {
     const P2 = harness.player('P2');
 
     // 界于吉扣置闪,声明为杀(假)
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 2 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 2 });
     await P1.respond('界蛊惑', { choice: true }); // P1 质疑
     await P2.pass(); // P2 不质疑 → P1 为唯一质疑者,翻牌(闪,假)
     await harness.waitForStable();
@@ -280,7 +280,7 @@ describe('界蛊惑', () => {
     const P1 = harness.player('P1');
     const P2 = harness.player('P2');
 
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 's1', declaredName: '杀', target: 1 });
+    await YJ.triggerAction('界蛊惑', 'use:杀', { cardId: 's1', target: 1 });
     // 顺序询问窗口:先问 P1
     expect(activeTargets(harness.state)).toEqual([1]);
 
@@ -322,7 +322,7 @@ describe('界蛊惑', () => {
     const P1 = harness.player('P1');
     const P2 = harness.player('P2');
 
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 't1', declaredName: '桃' });
+    await YJ.triggerAction('界蛊惑', 'use:桃', { cardId: 't1' });
     await P1.pass();
     await P2.pass();
     await harness.waitForStable();
@@ -342,7 +342,7 @@ describe('界蛊惑', () => {
     const P2 = harness.player('P2');
 
     // 第一次蛊惑(声明桃,无人质疑,回复)
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 't1', declaredName: '桃' });
+    await YJ.triggerAction('界蛊惑', 'use:桃', { cardId: 't1' });
     await P1.pass();
     await P2.pass();
     await harness.waitForStable();
@@ -352,8 +352,8 @@ describe('界蛊惑', () => {
     // 仅因"每回合限一次"被拒(expectRejected 不区分原因,故须排除其余非法因素)
     await YJ.expectRejected({
       skillId: '界蛊惑',
-      actionType: 'use',
-      params: { cardId: 's2', declaredName: '杀', target: 1 },
+      actionType: 'use:杀',
+      params: { cardId: 's2', target: 1 },
     });
   });
 
@@ -365,20 +365,20 @@ describe('界蛊惑', () => {
     // 声明非基本牌被拒(标版同口径:不支持普通锦囊牌)
     await YJ.expectRejected({
       skillId: '界蛊惑',
-      actionType: 'use',
-      params: { cardId: 's1', declaredName: '决斗' },
+      actionType: 'use:决斗',
+      params: { cardId: 's1' },
     });
     // 声明杀但无目标被拒
     await YJ.expectRejected({
       skillId: '界蛊惑',
-      actionType: 'use',
-      params: { cardId: 's1', declaredName: '杀' },
+      actionType: 'use:杀',
+      params: { cardId: 's1' },
     });
     // 声明杀但目标是自己被拒(不在攻击范围)
     await YJ.expectRejected({
       skillId: '界蛊惑',
-      actionType: 'use',
-      params: { cardId: 's1', declaredName: '杀', target: 0 },
+      actionType: 'use:杀',
+      params: { cardId: 's1', target: 0 },
     });
   });
 
@@ -389,7 +389,7 @@ describe('界蛊惑', () => {
     const P1 = harness.player('P1');
     const P2 = harness.player('P2');
 
-    await YJ.triggerAction('界蛊惑', 'use', { cardId: 'j1', declaredName: '酒' });
+    await YJ.triggerAction('界蛊惑', 'use:酒', { cardId: 'j1' });
     await P1.pass();
     await P2.pass();
     await harness.waitForStable();
@@ -406,8 +406,8 @@ describe('界蛊惑', () => {
     const YJ = harness.player('界于吉');
     await YJ.expectRejected({
       skillId: '界蛊惑',
-      actionType: 'use',
-      params: { cardId: 'f1', declaredName: '闪' },
+      actionType: 'use:闪',
+      params: { cardId: 'f1' },
     });
   });
 

@@ -2411,3 +2411,140 @@ describe('usePlayInteraction · confirm 型主动技直发(据守)', () => {
     expect(sentCalls(send)).toEqual([{ skillId: '据守', actionType: 'use', params: {} }]);
   });
 });
+
+// ─── 声明型主动技(蛊惑/界蛊惑):声明编码进 actionType,浏览器必须原样提交 ───
+// 声明(杀/桃/酒)不是客户端能构造的 params,而是 action 身份的一部分:引擎注册
+// `use:杀` / `use:桃` / `use:酒`,客户端按同一 actionType 提交(与 界渐营/界矫诏 的
+// `transform:<牌名>` 同款约定)。浏览器路径 = 选扣置牌 → 点「蛊惑·X」替代出牌按钮 → 出牌。
+describe('usePlayInteraction · 声明型主动技(蛊惑)的 actionType 原样提交', () => {
+  /** 扣置用的牌(任意手牌都能扣,声明与牌面无关) */
+  const DOWN_CARD = makeCard({ id: 'c-down', name: '闪', suit: '♥', color: '红' });
+
+  /** 蛊惑·杀(镜像 engine/skills/蛊惑.ts onMount 的 `use:杀` 声明) */
+  function guhuoKillAction(ownerId = 0): SkillActionDef {
+    return {
+      skillId: '蛊惑',
+      ownerId,
+      actionType: 'use:杀',
+      label: '蛊惑·杀',
+      style: 'danger',
+      prompt: {
+        type: 'useCardAndTarget',
+        title: '蛊惑:扣置一张手牌,声明为【杀】使用',
+        cardFilter: { filter: () => true, min: 1, max: 1 },
+        targetFilter: { min: 1, max: 1, filter: (v, i) => v.players[i]?.alive === true },
+      },
+      activeWhen: (ctx) => defaultPlayActive(ctx),
+    };
+  }
+
+  /** 蛊惑·桃(镜像 `use:桃`:selfTarget 自疗) */
+  function guhuoPeachAction(ownerId = 0): SkillActionDef {
+    return {
+      skillId: '蛊惑',
+      ownerId,
+      actionType: 'use:桃',
+      label: '蛊惑·桃',
+      style: 'primary',
+      prompt: {
+        type: 'useCardAndTarget',
+        title: '蛊惑:扣置一张手牌,声明为【桃】使用',
+        cardFilter: { filter: () => true, min: 1, max: 1 },
+        targetFilter: { min: 0, max: 1 },
+        selfTarget: true,
+      },
+      activeWhen: (ctx) => defaultPlayActive(ctx),
+    };
+  }
+
+  /** 蛊惑·酒(镜像 `use:酒`:无目标) */
+  function guhuoWineAction(ownerId = 0): SkillActionDef {
+    return {
+      skillId: '蛊惑',
+      ownerId,
+      actionType: 'use:酒',
+      label: '蛊惑·酒',
+      style: 'primary',
+      prompt: {
+        type: 'useCard',
+        title: '蛊惑:扣置一张手牌,声明为【酒】使用',
+        cardFilter: { filter: () => true, min: 1, max: 1 },
+      },
+      activeWhen: (ctx) => defaultPlayActive(ctx),
+    };
+  }
+
+  function makeGuhuoView(): GameView {
+    const view = makePlayView();
+    view.players[0].hand = [DOWN_CARD];
+    return view;
+  }
+
+  it('选牌 → 蛊惑·杀 → 选目标 → 出牌:发送 use:杀(而非硬编码 use)', () => {
+    const send = vi.fn();
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makeGuhuoView(),
+        skillActions: [guhuoKillAction()],
+        perspectiveHand: [DOWN_CARD],
+        send,
+      }),
+    );
+    act(() => result.current.handleCardClick(DOWN_CARD));
+    const declared = result.current.altActions.find((a) => a.actionType === 'use:杀');
+    expect(declared, '选中扣置牌后应出现「蛊惑·杀」替代出牌按钮').toBeDefined();
+
+    act(() => result.current.handleSkillAction(declared!));
+    expect(result.current.selectedCardId).toBe('c-down');
+    act(() => result.current.handleTargetClick('P1'));
+    expect(result.current.selectedTarget).toBe('P1');
+    act(() => result.current.handlePlayCard());
+
+    expect(sentCalls(send)).toEqual([
+      { skillId: '蛊惑', actionType: 'use:杀', params: { cardId: 'c-down', targets: [1] } },
+    ]);
+  });
+
+  it('选牌 → 蛊惑·桃(自疗)→ 出牌:发送 use:桃 + targets=[自己]', () => {
+    const send = vi.fn();
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makeGuhuoView(),
+        skillActions: [guhuoPeachAction()],
+        perspectiveHand: [DOWN_CARD],
+        send,
+      }),
+    );
+    act(() => result.current.handleCardClick(DOWN_CARD));
+    const declared = result.current.altActions.find((a) => a.actionType === 'use:桃');
+    expect(declared, '选中扣置牌后应出现「蛊惑·桃」替代出牌按钮').toBeDefined();
+
+    act(() => result.current.handleSkillAction(declared!));
+    act(() => result.current.handlePlayCard());
+
+    expect(sentCalls(send)).toEqual([
+      { skillId: '蛊惑', actionType: 'use:桃', params: { cardId: 'c-down', targets: [0] } },
+    ]);
+  });
+
+  it('选牌 → 蛊惑·酒(无目标)→ 点按钮即发送 use:酒', () => {
+    const send = vi.fn();
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makeGuhuoView(),
+        skillActions: [guhuoWineAction()],
+        perspectiveHand: [DOWN_CARD],
+        send,
+      }),
+    );
+    act(() => result.current.handleCardClick(DOWN_CARD));
+    const declared = result.current.altActions.find((a) => a.actionType === 'use:酒');
+    expect(declared, '选中扣置牌后应出现「蛊惑·酒」替代出牌按钮').toBeDefined();
+
+    act(() => result.current.handleSkillAction(declared!));
+
+    expect(sentCalls(send)).toEqual([
+      { skillId: '蛊惑', actionType: 'use:酒', params: { cardId: 'c-down', cardIds: ['c-down'] } },
+    ]);
+  });
+});

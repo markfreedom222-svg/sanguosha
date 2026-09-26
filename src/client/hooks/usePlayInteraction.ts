@@ -741,7 +741,9 @@ export function usePlayInteraction(
       `[data-card-id="${card.id}"]`,
     ) as HTMLElement | null;
     if (cardEl) createCardFlyAnimation(cardEl, card);
-    send(selectedUseAction.skillId, 'use', params);
+    // actionType 用 action 自己声明的(而非硬编码 'use'):声明型主动技(蛊惑/界蛊惑)把
+    // 声明编码进 actionType(`use:杀`),硬编码 'use' 会让引擎侧找不到 action 条目 → 恒拒。
+    send(selectedUseAction.skillId, selectedUseAction.actionType, params);
     // 与 handleSkillAction/handleTransformPlay 一致:提交后清空选中,
     // 否则牌飞走、离开手牌后 selectedCardId 仍指向它 → 「取消选择」残留却无牌高亮。
     setSelectedCardId(null);
@@ -1249,7 +1251,8 @@ export function usePlayInteraction(
         `[data-card-id="${card.id}"]`,
       ) as HTMLElement | null;
       if (cardEl) createCardFlyAnimation(cardEl, card);
-      send(useAction.skillId, 'use', params);
+      // 同 handlePlayCard:提交 action 自己声明的 actionType(声明型主动技不是 'use')
+      send(useAction.skillId, useAction.actionType, params);
       setSelectedCardId(null);
       setSelectedTarget(null);
     },

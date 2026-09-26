@@ -50,13 +50,15 @@ import { inAttackRange } from '../rules/distance';
 import { canSlash, incSlashUsed, slashUsed } from '../rules/slash-quota';
 import { usedThisTurn, markOncePerTurn } from '../rules/once-per-turn';
 import { SLASH_USED_COUNT_KEY, usedThisTurnKey } from '../rules/vars-keys';
+import { viewCanAttack } from '../rules/viewDistance';
+import { viewCanSlash } from '../rules/action-active';
 
 const REQUEST_TYPE = '蛊惑/质疑';
 const QUESTIONER_VAR = '蛊惑/质疑者';
 const DOWNCARD_VAR = '蛊惑/扣牌';
 const DECLARE_VAR = '蛊惑/声明';
 const RESCUED_VAR = '求桃/已救';
-/** use 主动使用可声明的牌(有主动效果);闪仅经 dodge 响应路径打出。 */
+/** 主动使用可声明的牌名(有主动效果);闪仅经 dodge 响应路径打出,故不在其中。 */
 const ACTIVE_DECLARATIONS = ['杀', '桃', '酒'] as const;
 type DeclaredName = '杀' | '闪' | '桃' | '酒';
 
@@ -253,6 +255,14 @@ function cleanupVars(state: GameState): void {
   delete state.localVars[QUESTIONER_VAR];
 }
 
+type ActiveDeclaration = (typeof ACTIVE_DECLARATIONS)[number];
+
+/** 主动使用 action 的 actionType 前缀:一个声明牌名一个 action(`use:杀` / `use:桃` / `use:酒`)。
+ *  客户端(浏览器技能按钮 / 无头枚举)无法凭空提供 `params.declaredName` —— 把「声明」
+ *  编码进 actionType 后,声明由用户点哪个按钮决定,前后端一一对应。
+ *  (与 界渐营/界矫诏 的 `transform:<牌名>` 同款约定。) */
+const USE_ACTION_PREFIX = 'use:';
+
 export function onInit(skill: Skill, state: GameState): (() => void) | void {
   const ownerId = skill.ownerId;
   const unloaders: Array<() => void> = [];
@@ -260,12 +270,15 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
   unloaders.push(declareAlternativeResponse(state, ownerId, '请求回应', '桃/求桃'));
 
   // ── use(于吉主动发动:杀/桃/酒)──
-  unloaders.push(
+  // 声明编码进 actionType(`use:杀`…):声明的牌名是 action 身份的一部分,不是客户端可选的
+  // params —— 旧实现要求 params.declaredName,而浏览器/无头客户端都构造不出它,整条主动
+  // 使用路径在真实客户端不可达(按钮点了没反应 / AI 枚举不出)。
+  const registerDeclaredUse = (declaredName: ActiveDeclaration): (() => void) =>
     registerAction(
       state,
       skill.id,
       ownerId,
-      'use',
+      `${USE_ACTION_PREFIX}${declaredName}`,
       (st: GameState, params: Record<string, Json>): string | null => {
         if (st.currentPlayerIndex !== ownerId) return '不是你的回合';
         if (st.phase !== '出牌') return '只能在出牌阶段发动';
@@ -275,10 +288,6 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
         if (!self?.alive) return '玩家不存在或已死亡';
         const cardId = params.cardId as string | undefined;
         if (typeof cardId !== 'string' || !self.hand.includes(cardId)) return '请选择一张手牌';
-        const declaredName = params.declaredName as string | undefined;
-        if (!declaredName || !(ACTIVE_DECLARATIONS as readonly string[]).includes(declaredName)) {
-          return '主动使用须声明杀/桃/酒(闪请于被杀时以蛊惑打出)';
-        }
         if (declaredName === '杀') {
           const target = params.target as number | undefined;
           if (typeof target !== 'number' || !st.players[target]?.alive) return '请选择合法目标';
@@ -295,7 +304,6 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
       async (st: GameState, params: Record<string, Json>) => {
         const from = ownerId;
         const cardId = params.cardId as string;
-        const declaredName = params.declaredName as DeclaredName;
         const target = params.target as number | undefined;
         // 限一次标记:第一个 await 前设置,防 dispatch 重入
         await markOncePerTurn(st, from, '蛊惑');
@@ -310,8 +318,8 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
           await popFrame(st);
         }
       },
-    ),
-  );
+    );
+  for (const declaredName of ACTIVE_DECLARATIONS) unloaders.push(registerDeclaredUse(declaredName));
 
   // ── dodge(响应·闪):被杀指定(询问闪 pending)时,扣牌声明为闪打出 ──
   unloaders.push(
@@ -431,13 +439,54 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
 }
 
 export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
-  api.defineAction('use', {
-    label: '蛊惑',
+  // use:每个声明牌名一个 action(与后端 `use:<牌名>` 一一对应)。
+  // 声明【杀】:需选目标(攻击范围内,与后端 杀 分支的 inAttackRange 同源);
+  // 声明【桃】:自疗(同 桃 的 selfTarget),需有受伤角色;
+  // 声明【酒】:无目标。
+  api.defineAction(`${USE_ACTION_PREFIX}杀`, {
+    label: '蛊惑·杀',
+    style: 'danger',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '蛊惑:扣置一张手牌,声明为【杀】使用',
+      cardFilter: { filter: () => true, min: 1, max: 1 },
+      targetFilter: {
+        min: 1,
+        max: 1,
+        filter: (view, t) => viewCanAttack(view.players, view.cardMap, api.viewer, t),
+      },
+    },
+    activeWhen: (ctx: ActionContext) =>
+      activeUseActive(ctx) && viewCanSlash(ctx.view, ctx.perspectiveIdx),
+  });
+  api.defineAction(`${USE_ACTION_PREFIX}桃`, {
+    label: '蛊惑·桃',
+    style: 'primary',
+    prompt: {
+      type: 'useCardAndTarget',
+      title: '蛊惑:扣置一张手牌,声明为【桃】使用',
+      cardFilter: { filter: () => true, min: 1, max: 1 },
+      targetFilter: {
+        min: 0,
+        max: 1,
+        filter: (view, t) => {
+          const p = view.players[t];
+          return p?.alive === true && p.health < p.maxHealth;
+        },
+      },
+      selfTarget: true,
+    },
+    activeWhen: (ctx: ActionContext) =>
+      activeUseActive(ctx) &&
+      ctx.view.players.some((p) => p.alive === true && p.health < p.maxHealth),
+  });
+  api.defineAction(`${USE_ACTION_PREFIX}酒`, {
+    label: '蛊惑·酒',
     style: 'primary',
     prompt: {
       type: 'useCard',
-      title: '蛊惑:扣置一张手牌,声明为基本牌(杀/桃/酒)并使用',
-      cardFilter: { min: 1, max: 1 },
+      title: '蛊惑:扣置一张手牌,声明为【酒】使用',
+      cardFilter: { filter: () => true, min: 1, max: 1 },
     },
     activeWhen: (ctx: ActionContext) => activeUseActive(ctx),
   });

@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — 2026-09-27
+
+### Fixed — 声明型主动技(蛊惑/界蛊惑)在真实客户端不可发动:声明须编码进 actionType
+
+`蛊惑`/`界蛊惑` 的主动使用路径要求 `params.declaredName ∈ {杀,桃,酒}`,但浏览器与无头/AI
+客户端都没有构造该参数的路径:prompt 是 `useCard`/`useCardAndTarget` 且 `cardFilter` 缺
+`filter`(卡牌点击路径 `extractCardFilter` 返回 null 永不匹配),又无 `transform`
+(技能按钮路径不渲染)→ 于吉的整条主动使用路径在真实客户端不可达(按钮点了没反应 /
+AI 枚举不出),只有技能测试手写 `declaredName` 能跑通。浏览器侧还有第二处硬编码:
+`handlePlayCard` / `handleCardDoubleClick` 提交时写死 `actionType: 'use'`。
+
+#### Changed
+
+- `蛊惑`/`界蛊惑` onInit:声明编码进 actionType —— 每个声明牌名一个 action
+  (`use:杀` / `use:桃` / `use:酒`),声明由玩家点哪个按钮决定,前后端一一对应
+  (与 界渐营/界矫诏 的 `transform:<牌名>` 同款约定)。闪仍只经 `dodge` 响应路径。
+- `蛊惑`/`界蛊惑` onMount:三个 action 各自声明 prompt —— 杀(攻击范围内选目标 +
+  `viewCanSlash` 出杀次数门槛)、桃(`selfTarget` 自疗,需场上有人受伤)、酒(无目标);
+  `cardFilter` 补 `filter`(`() => true`,扣置牌任意)让卡牌点击/替代出法路径能匹配。
+- `usePlayInteraction`:`handlePlayCard` / `handleCardDoubleClick` 提交 action 自己声明的
+  `actionType`,不再硬编码 `'use'`(非 `'use'` 的 actionType 会被引擎按 action 条目查表)。
+
+#### 测试
+
+- 新增 `tests/headless/guhuo-declared-use.test.ts`:客户端枚举出的 `use:杀`/`use:桃`/`use:酒`
+  原样 dispatch 必须被接受;声明集合恰为三个(引擎无 `use:闪`)。
+- `tests/client/usePlayInteraction.test.ts`:选扣置牌 → 点「蛊惑·X」替代出牌按钮 → 出牌,
+  断言提交的 actionType 是 `use:杀`/`use:桃`/`use:酒`(硬编码 `'use'` 时用例红)。
+- `tests/skill-tests/蛊惑.test.ts` / `界蛊惑.test.ts`:迁移到 `use:<牌名>` 契约。
+
 ## [Unreleased] — 2026-09-26
 
 ### Fixed — chooseOption 型主动技(决堰)在浏览器无按钮、提交缺 option
