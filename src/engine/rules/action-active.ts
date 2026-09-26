@@ -26,6 +26,16 @@ export function defaultPlayActive(ctx: ActionContext): boolean {
   return view.currentPlayerIndex === perspectiveIdx && view.phase === '出牌' && !blocked;
 }
 
+/** 主公技门槛:技能拥有者是否处于主公位。
+ *  项目约定「主公固定 0 号位」——各主公技的引擎 validate 一律以 `ownerId === 0` 为门槛
+ *  (激将/界激将/制霸/界制霸/黄天/界黄天/救援/界救援/界血裔/回合管理…)。
+ *  客户端 activeWhen 必须复用同一判据:非主公座次的武将仍带着自己的主公技
+ *  (孙策带 界制霸、刘备带 激将),少了这道门槛,无头/AI 客户端会枚举出引擎必拒的
+ *  action,启发式评分确定性反复挑中 → 空转。 */
+export function isLordOwner(ownerId: number): boolean {
+  return ownerId === 0;
+}
+
 /** 前端可计算的出杀次数上限(基于 view 装备元数据/turnUsage 前缀聚合推断)。
  *  后端采用三层模型(slash-quota.ts):额定(覆盖 max)+ 额外(叠加 Σ)+ 无限(任一 true→∞)。
  *  前端无法访问提供者集合,故用武器元数据 + turnUsage 通用前缀推断,与后端 slashMax 同源。

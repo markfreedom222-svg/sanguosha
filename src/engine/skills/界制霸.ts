@@ -35,6 +35,7 @@ import { popFrame, pushFrame } from '../core/frame';
 import { usedThisTurn, markOncePerTurn, activeUnlessUsedThisTurn } from '../rules/once-per-turn';
 import { registerAction, hasBlockingPending } from '../core/skill';
 import { getHunziAwakened } from '../rules/vars-keys';
+import { isLordOwner } from '../rules/action-active';
 
 const SKILL_ID = '界制霸';
 const DISPLAY_NAME = '制霸';
@@ -415,6 +416,10 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
     // 若统一读 LORD_USED,盟友用过方向 A 后按钮仍亮(其 '界制霸/主动/usedThisTurn' 永不置位)。
     activeWhen: (ctx) => {
       const me = ctx.perspectiveIdx;
+      // 方向 B(自己 = 技能拥有者 = 孙策):后端 validate 要求主公位(ownerId===0),
+      // 非主公位不得激活 —— 否则无头/AI 客户端枚举出该 action,提交恒拒
+      // 「制霸为主公技,孙策非主公」(fuzz 实测单局 14 次空转)。
+      if (me === ownerId && !isLordOwner(ownerId)) return false;
       if ((ctx.view.players[me]?.hand?.length ?? 0) === 0) return false;
       return activeUnlessUsedThisTurn(me === ownerId ? LORD_USED : ALLY_USED)(ctx);
     },

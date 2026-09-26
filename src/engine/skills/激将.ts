@@ -21,6 +21,7 @@ import { popFrame, pushFrame, frameCards } from '../core/frame';
 import { runUseFlow } from './cards/use-card';
 import { registerAction, hasBlockingPending, declareAlternativeResponse } from '../core/skill';
 import { inAttackRange } from '../rules/distance';
+import { isLordOwner } from '../rules/action-active';
 
 // use(代使用)路径的 localVars 键 / requestType 常量(对齐 乱武/借刀杀人 风格)
 const REQUEST_TYPE = '激将/出杀';
@@ -259,6 +260,9 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       filter: (view: GameView, t: number) =>
         t !== skill.ownerId && view.players[t]?.alive === true && view.players[t]?.faction === '蜀',
     },
+    // 主公技门槛(与后端 validate 的 ownerId===0 同源):刘备非主公时不得激活——
+    // 否则无头/AI 客户端枚举出该 action,提交恒拒「现在不能使用激将」。
+    activeWhen: () => isLordOwner(skill.ownerId),
   });
   // respond:响应型激将(被询问杀时激活)
   api.defineAction('respond', {

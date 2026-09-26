@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] — 2026-09-26
 
+### Fixed — 主公技缺主公位门槛:非主公座次枚举出引擎必拒的 use action
+
+`激将`/`界激将`/`界制霸` 的引擎 validate 一律以「主公固定 0 号位」(`ownerId === 0`)为门槛,
+但客户端 `onMount` 的 `use` action 漏了这道门槛 —— 非主公座次的武将仍带着自己的主公技
+(孙策带 界制霸、刘备带 激将),无头/AI/MCP 客户端因此枚举出该 action,提交恒拒
+(「现在不能使用激将」/「制霸为主公技,孙策非主公」)。启发式评分是确定性的,反复挑中同一非法
+动作即空转:随机自对弈实测 `REJECT:界制霸:use` 单局 14 次。浏览器侧靠 `LORD_SKILLS` 展示过滤
+兜底,无头/AI 侧没有这层过滤 —— 判据必须写在 action 自身。
+
+#### Changed
+
+- 新增 `isLordOwner(ownerId)`(`src/engine/rules/action-active.ts`):主公技门槛的单一事实来源,
+  与各主公技引擎 validate 的 `ownerId === 0` 同源。
+- `激将`/`界激将` 的 `use` action 补 `activeWhen`;`界制霸` 的 `use` 在方向 B(自己 = 技能拥有者)
+  分支上叠加该门槛(方向 A 盟友分支不受影响)。
+
+#### 测试
+
+- 新增 `tests/headless/lord-skill-gate.test.ts`:非主公座次枚举不出(3 技能)+ 主公座次枚举出的
+  action 必须被引擎接受(正例,防止门槛写过头)。
+
+## [Unreleased] — 2026-09-26
+
 ### Fixed — 客户端枚举/构造与引擎判据不同源(9 类「整技/整方向在真实客户端不可用」)
 
 本轮以「客户端枚举 → 原样 dispatch」的契约扫描(tmp/sweep.ts,覆盖全部武将/装备技能 ×
