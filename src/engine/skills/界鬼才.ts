@@ -2,10 +2,10 @@
 //
 // 与标版鬼才的差异:标版只能用手牌改判定;界版可以用手牌或装备区的牌。
 //   装备牌从装备区移到判定区替换判定牌——需先卸载装备自带技能(移除技能),
-//   再从装备区卸下到手牌(卸下),然后走与标版相同的直接 mutate 交换判定牌流程。
+//   再从装备区卸下到手牌(卸下),然后走与标版相同的 replaceJudgeCard 交换判定牌流程。
 //   (与 装备通用 换装流程的 移除技能 → 卸下 序列一致。)
 //
-// 其余机制(registerJudgeModifier / respond action / frameCards 直接 mutate)与标版一致。
+// 其余机制(registerJudgeModifier / respond action / replaceJudgeCard 改判)与标版一致。
 //   localVars 键名保持原前缀 '鬼才/replaceCard';requestType 用 '界鬼才/replace'。
 //
 // 触发时机:判定牌翻开(判定 atom.apply 完成)后、判定效果(闪电/兵粮寸断/乐不思蜀等
@@ -15,10 +15,10 @@
 //   - afterApply 阶段:runJudgeModifiers 从判定目标起逆时针逐个询问改判能力
 //   - 本钩子询问界司马懿是否替换:是 → 把 frameCards 顶的判定牌移入弃牌堆,替换牌压入帧顶
 //   - 之后技能 after hooks(闪电等消费方)读 frameCards 顶 → 看到替换后的牌
-//   - 判定 atom 自身的 afterHooks(在所有技能 hook 之后)把 frameCards 顶移入弃牌堆
+//   - runJudgeFlow 末尾 cleanupJudgeCard 把 frameCards 顶移入弃牌堆
 //
-// 交换判定牌通过直接 mutate frameCards(与武圣影子卡同样的直接-mutate 先例:
-//   无现成 atom 承载"替换判定牌"操作)。
+// 交换判定牌走 flows/judge.ts 的 replaceJudgeCard:原判定牌与替换牌各经一步「移动牌」atom
+//   (前者入弃牌堆、后者打出到帧顶),交换全程有视图投影。
 import type {
   EquipSlot,
   FrontendAPI,

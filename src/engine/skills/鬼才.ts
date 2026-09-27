@@ -13,8 +13,8 @@
 //   故司马懿任意座次都能生效(不再依赖“座次靠前于消费方”)。鬼才与鬼道同场时,
 //   runJudgeModifiers 按判定目标逆时针依次询问,顺序符合官方规则。
 //
-// 交换判定牌通过直接 mutate frameCards(与武圣影子卡同样的直接-mutate 先例:
-//   无现成 atom 承载"替换判定牌"操作)。
+// 交换判定牌走 flows/judge.ts 的 replaceJudgeCard:原判定牌与替换牌各经一步「移动牌」atom
+//   (前者入弃牌堆、后者打出到帧顶),交换全程有视图投影。
 import type { FrontendAPI, GameState, Json, Skill } from '../types';
 import { applyAtom } from '../core/apply'
 import { frameCards } from '../core/frame';

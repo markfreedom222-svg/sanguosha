@@ -418,3 +418,178 @@ describe('多声明型转化技(界渐营/界矫诏)', () => {
     expect(res.accepted, '客户端枚举的界矫诏转化必须被引擎接受').toBe(true);
   });
 });
+
+// ─── 龙胆双向转化(杀↔闪)与 界武圣 的回应窗口 ───
+// 契约:龙胆/界武圣 的每个方向都必须在对应窗口里枚举出动作且 dispatch 被接受:
+//   (a) 出牌方向 闪→杀:主 action = 杀.use;杀→闪 不枚举(闪无主动 use 入口)。
+//   (b) 询问闪窗口 杀→闪:主 action = 闪.respond,伤害被抵消。
+//   (c) 询问杀窗口(决斗) 闪→杀:主 action = 杀.respond。
+//   (d) 询问杀窗口(决斗) 界武圣红牌→杀:主 action = 杀.respond。
+// 缺任一方向 = 该方向在无头/AI 客户端整类不可用(按钮消失 / 窗口里只能 skip)。
+describe('龙胆双向与界武圣回应:客户端枚举 → 引擎 dispatch', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  /** 组装双人局(指定当前回合方)并完成引擎/前端注册,返回 state。 */
+  async function setupState(
+    players: PlayerState[],
+    cardMap: Record<string, Card>,
+    currentPlayerIndex: number,
+  ): Promise<GameState> {
+    const state = createGameState({
+      players,
+      cardMap,
+      currentPlayerIndex,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.zones = { deck: [], discardPile: [], processing: [] };
+    await registerSkillsFromState(state);
+    clearRegistry();
+    for (const p of state.players) await registerSkillActions(p.index, p.skills);
+    return state;
+  }
+
+  it('龙胆(出牌方向):闪当杀枚举为 杀.use 被接受;杀当闪不枚举(闪无主动 use 入口)', async () => {
+    const kill = mkCard('k1', '杀', '♠', '7');
+    const dodge = mkCard('d1', '闪', '♥', '6');
+    const { state, actions } = await enumerateTransforms({
+      players: [mkPlayer(0, 'P0', ['k1', 'd1'], ['龙胆', '杀', '回合管理']), mkPlayer(1, 'P1', [], [])],
+      cardMap: { k1: kill, d1: dodge },
+      seat: 0,
+    });
+
+    const longdan = actions.filter((a) => a.message.preceding?.[0]?.skillId === '龙胆');
+    // 手牌同时有 杀+闪:只有 闪→杀 方向被枚举;杀→闪 产出【闪】无主动 use 入口 → 跳过
+    expect(longdan, '客户端应枚举出龙胆转化(且仅闪当杀方向)').toHaveLength(1);
+    expect(longdan[0].message.skillId).toBe('杀');
+    expect(longdan[0].message.actionType).toBe('use');
+    expect(longdan[0].message.params.cardId).toBe('d1#龙胆');
+    expect(
+      actions.some((a) => a.message.skillId === '闪'),
+      '杀当闪在出牌阶段不应枚举(引擎无对应 use action)',
+    ).toBe(false);
+
+    const res = await dispatch(state, {
+      ...longdan[0].message,
+      params: { ...longdan[0].message.params, targets: [1] },
+      ownerId: 0,
+      baseSeq: state.seq,
+    });
+    expect(res.accepted, '客户端枚举的龙胆闪当杀必须被引擎接受').toBe(true);
+  });
+
+  it('龙胆(回应方向):询问闪窗口中 杀当闪 respond 被接受,伤害被抵消', async () => {
+    const kill = mkCard('k1', '杀', '♠', '7'); // P0 拿它当闪
+    const slash = mkCard('s1', '杀', '♣', '5'); // P1 的实体杀
+    const state = await setupState(
+      [
+        mkPlayer(0, 'P0', ['k1'], ['龙胆', '杀', '闪', '回合管理']),
+        mkPlayer(1, 'P1', ['s1'], ['杀', '回合管理']),
+      ],
+      { k1: kill, s1: slash },
+      1,
+    );
+
+    // P1 对 P0 使用杀 → P0 被询问闪
+    const killUse = await dispatch(state, {
+      skillId: '杀',
+      actionType: 'use',
+      ownerId: 1,
+      params: { cardId: 's1', targets: [0] },
+      baseSeq: state.seq,
+    });
+    expect(killUse.accepted, 'P1 的杀应被接受').toBe(true);
+    await killUse.settle;
+
+    const view = buildView(state, 0);
+    expect((view.pending?.atom as { type?: string }).type).toBe('询问闪');
+    const actions = enumerateAvailableActions(view, 0, getActionsForPlayer(0));
+    const tf = actions.find((a) => a.category === 'transform' && a.message.skillId === '闪');
+    expect(tf, '客户端应枚举出龙胆杀当闪回应').toBeDefined();
+    expect(tf!.message.actionType).toBe('respond');
+    expect(tf!.message.params.cardId).toBe('k1#龙胆');
+    expect(tf!.message.preceding![0].skillId).toBe('龙胆');
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的龙胆杀当闪必须被引擎接受').toBe(true);
+    await res.settle;
+    // 排空杀结算续跑的微任务后再断言体力
+    await new Promise((r) => setTimeout(r, 0));
+    expect(state.players[0].health, '杀被闪抵消,P0 不得掉血').toBe(4);
+  });
+
+  it('龙胆(被询问杀):决斗窗口中 闪当杀 respond 被接受', async () => {
+    const dodge = mkCard('d1', '闪', '♥', '6');
+    const duel = mkCard('du1', '决斗', '♣', '10');
+    const state = await setupState(
+      [
+        mkPlayer(0, 'P0', ['d1'], ['龙胆', '杀', '闪', '回合管理']),
+        mkPlayer(1, 'P1', ['du1'], ['决斗', '杀', '回合管理']),
+      ],
+      { d1: dodge, du1: duel },
+      1,
+    );
+
+    // P1 对 P0 使用决斗 → P0 被询问杀
+    const duelUse = await dispatch(state, {
+      skillId: '决斗',
+      actionType: 'use',
+      ownerId: 1,
+      params: { cardId: 'du1', targets: [0] },
+      baseSeq: state.seq,
+    });
+    expect(duelUse.accepted, 'P1 的决斗应被接受').toBe(true);
+    await duelUse.settle;
+
+    const view = buildView(state, 0);
+    expect((view.pending?.atom as { type?: string }).type).toBe('询问杀');
+    const actions = enumerateAvailableActions(view, 0, getActionsForPlayer(0));
+    const tf = actions.find((a) => a.category === 'transform' && a.message.skillId === '杀');
+    expect(tf, '客户端应枚举出龙胆闪当杀回应').toBeDefined();
+    expect(tf!.message.actionType).toBe('respond');
+    expect(tf!.message.params.cardId).toBe('d1#龙胆');
+    expect(tf!.message.preceding![0].skillId).toBe('龙胆');
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的龙胆闪当杀必须被引擎接受').toBe(true);
+  });
+
+  it('界武圣(被询问杀):决斗窗口中 红牌当杀 respond 被接受', async () => {
+    const red = mkCard('r1', '闪', '♥', '5');
+    const duel = mkCard('du1', '决斗', '♣', '10');
+    const state = await setupState(
+      [
+        mkPlayer(0, 'P0', ['r1'], ['界武圣', '杀', '回合管理']),
+        mkPlayer(1, 'P1', ['du1'], ['决斗', '杀', '回合管理']),
+      ],
+      { r1: red, du1: duel },
+      1,
+    );
+
+    const duelUse = await dispatch(state, {
+      skillId: '决斗',
+      actionType: 'use',
+      ownerId: 1,
+      params: { cardId: 'du1', targets: [0] },
+      baseSeq: state.seq,
+    });
+    expect(duelUse.accepted, 'P1 的决斗应被接受').toBe(true);
+    await duelUse.settle;
+
+    const view = buildView(state, 0);
+    expect((view.pending?.atom as { type?: string }).type).toBe('询问杀');
+    const actions = enumerateAvailableActions(view, 0, getActionsForPlayer(0));
+    const tf = actions.find(
+      (a) => a.category === 'transform' && a.message.preceding?.[0]?.skillId === '界武圣',
+    );
+    expect(tf, '客户端应枚举出界武圣红牌当杀回应').toBeDefined();
+    expect(tf!.message.skillId).toBe('杀');
+    expect(tf!.message.actionType).toBe('respond');
+    expect(tf!.message.params.cardId).toBe('r1#界武圣');
+
+    const res = await dispatch(state, { ...tf!.message, ownerId: 0, baseSeq: state.seq });
+    expect(res.accepted, '客户端枚举的界武圣红牌当杀必须被引擎接受').toBe(true);
+  });
+});

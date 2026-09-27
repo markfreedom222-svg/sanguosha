@@ -8,7 +8,7 @@
 //   从牌堆底(deck 开头)抽牌。before-hook 折叠为单趟执行(无重入),不会循环。
 //
 // 覆盖范围:owner 的所有摸牌(摸牌阶段默认摸牌、成略/恃才/其它技能触发的摸牌)
-// 均走 摸牌 atom → 本 hook 改为从牌堆底摸。判定(判定.ts 直接 shift deck[0])不走
+// 均走 摸牌 atom → 本 hook 改为从牌堆底摸。判定(直接 pop 牌堆顶 = deck 末尾)不走
 // 摸牌 atom,不受影响。
 import type { GameState, Skill } from '../types';
 import { registerBeforeHook } from '../core/skill';

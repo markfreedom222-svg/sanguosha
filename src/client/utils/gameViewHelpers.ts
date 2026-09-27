@@ -67,19 +67,26 @@ export function hasUseEntry(card: Card): boolean {
   return effect ? effect.timing !== '生效前' : true;
 }
 
-/** 不属于"出牌阶段替代出牌方式"的 actionType 集合。
+/** 不属于"出牌阶段替代出牌方式"的 actionType 判定。
  *  respond=被动回应(pending 驱动);
  *  transform=转化技(transformMode 入口);distribute=分配(distributeMode 入口)。
+ *  另有声明型转化技的 actionType 前缀族 `transform:杀`/`transform:桃`…(界矫诏/界渐营
+ *  每个声明牌名注册一个 action)——同样各有 transformMode 交互入口,不作 altAction。
  *  这些均有各自的交互入口,不应在选中牌后作为 altAction 按钮重复出现。
  *  use 不排除:同一张牌可能被多个 use action 匹配(如黑杀同时匹配"杀"和"断粮"),
  *  主 use action(findUseActionForCard 返回)作为主按钮,其余 use action 作为
  *  替代出牌方式出现——这正是断粮/界断粮等转化类主动技的 UI 入口。 */
 const NON_ALT_ACTION_TYPES = new Set(['respond', 'transform', 'distribute']);
 
+/** actionType 是否属于"有独立交互入口、不作 altAction"的类型(集合 + transform: 前缀族)。 */
+function isNonAltActionType(actionType: string): boolean {
+  return NON_ALT_ACTION_TYPES.has(actionType) || actionType.startsWith('transform:');
+}
+
 /**
  * 找出适用于指定卡牌的替代出牌动作(如铁索连环·重铸)。
  * 仅匹配真正的"出牌阶段替代出牌方式"(recast 等),排除 use/respond/transform/distribute
- * ——后者各有独立交互入口。避免选中桃后误出"出桃/respond""火攻/respond"等按钮。
+ * 及 transform: 前缀族——后者各有独立交互入口。避免选中桃后误出"出桃/respond""火攻/respond"等按钮。
  * @param actions 候选 action 集合
  * @param card   当前选中的卡牌
  */
@@ -89,7 +96,7 @@ export function findAltActionsForCard(
   primaryAction?: SkillActionDef,
 ): SkillActionDef[] {
   return actions.filter((a) => {
-    if (NON_ALT_ACTION_TYPES.has(a.actionType)) return false;
+    if (isNonAltActionType(a.actionType)) return false;
     // 排除主 use action(避免与主按钮重复);非 use 类型不受影响(primaryAction 为 undefined)
     if (primaryAction && a === primaryAction) return false;
     const filter = extractCardFilter(a.prompt);

@@ -31,13 +31,14 @@ import { runDamageFlow } from '../flows/damage';
 import { usedThisTurn, markOncePerTurn } from '../rules/once-per-turn';
 import { defaultPlayActive } from '../rules/action-active';
 import { registerAction, registerAfterHook, hasBlockingPending } from '../core/skill';
+import { SHENSHI_STATE_VIEW_KEY } from '../rules/vars-keys';
 import type { SkillModule } from '../types';
 
 const SKILL_ID = '审时';
 /** 转换态 state key(跨回合持久,无 /usedThisTurn 后缀)。 */
 const STATE_KEY = '审时/态';
 /** 转换态 view 同步 key(经 回合用量 atom 投影 turnUsage)。 */
-const STATE_VIEW_KEY = '审时/态';
+const STATE_VIEW_KEY = SHENSHI_STATE_VIEW_KEY;
 
 const YIN_CONFIRM_RT = '审时/阴/confirm';
 const YIN_GIVE_RT = '审时/阴/give';

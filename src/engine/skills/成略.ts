@@ -50,13 +50,13 @@ import {
   registerDistanceExemptor,
 } from '../rules/distance';
 import type { SkillModule } from '../types';
-import { CHENGLUE_SUITS_VIEW_KEY, slashUnlimitedKey } from '../rules/vars-keys';
+import { CHENGLUE_STATE_VIEW_KEY, CHENGLUE_SUITS_VIEW_KEY, slashUnlimitedKey } from '../rules/vars-keys';
 
 const SKILL_ID = '成略';
 /** 转换态 state key(跨回合持久,无 /usedThisTurn 后缀)。 */
 const STATE_KEY = '成略/态';
 /** 转换态 view 同步 key(经 回合用量 atom 投影 turnUsage)。 */
-const STATE_VIEW_KEY = '成略/态';
+const STATE_VIEW_KEY = CHENGLUE_STATE_VIEW_KEY;
 /** turn.vars key:本回合成略弃置牌的花色数组(string[]),驱动三个豁免器。 */
 const SUITS_VAR = CHENGLUE_SUITS_VIEW_KEY;
 

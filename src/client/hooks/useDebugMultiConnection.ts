@@ -20,15 +20,11 @@ import { logWsMessage, logUserAction } from '../utils/debugTelemetry';
 import { useAuth } from './useAuth';
 import { isRoomNotFound } from '../utils/roomErrors';
 import type { GameView } from '../../engine/types';
-import { suitColor, type Suit } from '../../engine/types';
 import type { ServerMessage, ClientMessage } from '../../server/protocol';
 import type { ActionMsg } from '../types';
 import { appendIngestedEvents } from '../utils/appendIngestedEvents';
 
 const log = createLogger('useDebugMultiConnection');
-
-/** 判定牌在处理区停留时间(ms),供玩家看清花色点数后移除 */
-const JUDGE_CARD_LINGER_MS = 2500;
 
 export type { ActionMsg };
 
@@ -365,7 +361,7 @@ export function useDebugMultiConnection(params: UseDebugMultiConnectionParams): 
     return () => clearTimeout(timer);
   }, [gameStarted, views, perspective, connectedCount, playerCount]);
 
-  /** 展示层消息增强：seatPlayerIds/game_reset/判定牌 processing 延迟/event playback。
+  /** 展示层消息增强：seatPlayerIds/game_reset/event playback。
    *  HGC 已维护 view；这里只做渲染相关的额外处理。 */
   const handleDisplayMessage = useCallback(
     (viewerIndex: number, msg: ServerMessage) => {
@@ -415,43 +411,6 @@ export function useDebugMultiConnection(params: UseDebugMultiConnectionParams): 
           // event playback / 出牌历史:仅当前视角连接的事件入队,避免 N 座次重复入队
           if (msg.view && seat === perspectiveRef.current) {
             playbackRef.current.enqueue([{ seq: msg.seq, event: msg.view }]);
-          }
-          // 判定牌 processing 延迟展示：判定牌加入 processing 几秒后移除
-          if (msg.view && (msg.view.atomType ?? msg.view.type) === '判定') {
-            const judgeCardId = msg.view.cardId as string | undefined;
-            const judgeCard = msg.view.card as
-              | { name: string; suit: string; rank: string }
-              | undefined;
-            if (judgeCardId) {
-              setViews((prev) => {
-                const v = prev.get(seat);
-                if (!v) return prev;
-                if (!v.cardMap[judgeCardId] && judgeCard) {
-                  v.cardMap[judgeCardId] = {
-                    id: judgeCardId,
-                    name: judgeCard.name,
-                    suit: judgeCard.suit as GameView['cardMap'][string]['suit'],
-                    color: suitColor(judgeCard.suit as Suit),
-                    rank: judgeCard.rank,
-                    type: '基本牌',
-                  };
-                }
-                if (v.zones && !v.zones.processing.includes(judgeCardId)) {
-                  v.zones.processing.push(judgeCardId);
-                }
-                return new Map(prev).set(seat, v);
-              });
-              setTimeout(() => {
-                setViews((prev) => {
-                  const v = prev.get(seat);
-                  if (!v?.zones) return prev;
-                  const idx = v.zones.processing.indexOf(judgeCardId);
-                  if (idx < 0) return prev;
-                  v.zones.processing.splice(idx, 1);
-                  return new Map(prev).set(seat, v);
-                });
-              }, JUDGE_CARD_LINGER_MS);
-            }
           }
           break;
         }

@@ -12,11 +12,13 @@
 // 覆盖(修复前 view 侧上限恒为 1,与引擎不一致):
 //   1. 雄乱(无次数限制)  2. 界陷阵拼点赢(无次数限制)
 //   3. 界鞬出非基本分支(+1)  4. 立军主公确认(盟友 +1)
+//   5. 非当前回合玩家写入 杀/extra(界鞬出 被 借刀杀人/挑衅 逼杀):
+//      __view 镜像不得归属到当前回合玩家(buildView 只投影给 currentPlayerIndex)
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildView } from '../../src/engine/index';
 import { canSlash, slashMax } from '../../src/engine/rules/slash-quota';
 import { viewCanSlash, viewSlashMax } from '../../src/engine/rules/action-active';
-import { SLASH_USED_COUNT_KEY } from '../../src/engine/rules/vars-keys';
+import { SLASH_USED_COUNT_KEY, slashExtraKey } from '../../src/engine/rules/vars-keys';
 import { applyAtom } from '../../src/engine/core/apply';
 import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
@@ -191,5 +193,50 @@ describe('额外出杀 / 无次数限制必须投影到 view', () => {
     expect(slashMax(state, 1)).toBe(2);
     await markOneSlashUsed(state, 1);
     expectViewAgreesWithEngine(state, 1);
+  });
+
+  it('非当前回合玩家写入 杀/extra:__view 镜像不得归属到当前回合玩家(界鞬出被逼杀)', async () => {
+    // 场景:界庞德(座次1)在 P0 的回合被 借刀杀人/挑衅 指定对他人出杀——界鞬出 的
+    // 指定目标 after-hook 只看 atom.source === ownerId(与谁的回合无关),非基本牌分支
+    // 以 player:1 写 '杀/extra/界鞬出'。turn.vars 的 __view 镜像键不含玩家维度,而
+    // buildView 只把 __view/* 投影给 state.currentPlayerIndex → 镜像会把 +1 错记到
+    // P0 头上:重连后 P0 viewSlashMax=2 ≠ 引擎 1,客户端枚举的第 2 张杀必被引擎拒。
+    const state = createGameState({
+      players: [
+        mkPlayer({ index: 0, name: 'P0', skills: ['回合管理'] }),
+        mkPlayer({ index: 1, name: '界庞德', skills: ['回合管理', '界鞬出'] }),
+      ],
+      cardMap: {},
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    await harness.setup(state);
+
+    // 界鞬出 非基本分支的 state 侧真相 + view 投影(与 askTargetToDiscard 同构),
+    // 写入方是非当前回合玩家(界庞德,座次1)
+    state.turn.vars['界鞬出/quotaBonus'] = 1;
+    await applyAtom(state, {
+      type: '回合用量',
+      player: 1,
+      key: slashExtraKey('界鞬出'),
+      value: 1,
+    });
+
+    // 引擎侧:+1 只属于界庞德(provider 按 ownerId 归属),当前回合玩家 P0 上限仍为 1
+    expect(slashMax(state, 1)).toBe(2);
+    expect(slashMax(state, 0)).toBe(1);
+
+    // (a) buildView 重建(初始/重连视图):P0 的 view 出杀上限不得被镜像抬高
+    const view = buildView(state, 0);
+    expect(viewSlashMax(view, 0)).toBe(1);
+    expectViewAgreesWithEngine(state, 0);
+
+    // (b) 在线增量路径不受镜像守卫影响:事件按 event.player 归属界庞德
+    harness.processAllEvents();
+    const jpView = harness.player('界庞德').processedView;
+    expect(
+      jpView.players.find((p) => p.index === 1)?.turnUsage?.[slashExtraKey('界鞬出')],
+    ).toBe(1);
   });
 });

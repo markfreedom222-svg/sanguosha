@@ -189,6 +189,8 @@ export function HandArea({
             // 弃牌超时兜底预览:命中且未选中(已选中的牌会被玩家显式弃置)时高亮
             const isTimeoutFallback =
               !!timeoutFallbackIds?.has(card.id) && !isDiscardSelected;
+            // transformWrapperName 逐牌跟随实际转化方向:transform 回调按当前牌求产出名
+            // (龙胆 杀↔闪 双向),固定用进入模式时的样本名(wrapperName)会把方向钉死。
             return (
               <div
                 key={card.id}
@@ -212,7 +214,11 @@ export function HandArea({
                   isTransformMatch={isTransformMatch}
                   isTransformActive={isTransformActive}
                   isTransformDisabled={isTransformDisabled}
-                  transformWrapperName={transformMode?.wrapperName}
+                  transformWrapperName={
+                    transformMode?.transform
+                      ? transformMode.transform(card).name
+                      : transformMode?.wrapperName
+                  }
                   isDistributeCandidate={isDistCandidate}
                   isDistributeSelected={isDistSelected}
                   isDistributeAllocated={isDistAllocated}

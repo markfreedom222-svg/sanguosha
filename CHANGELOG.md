@@ -2,6 +2,76 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] — 2026-09-28
+
+### Fixed — 评审修复批:客户端门槛/投影与引擎 validate 的 9 处不同源 + 镜像归属错人
+
+全量 code review(origin/main...loop-fix)后按发现修复。根因仍属本分支主线消灭的
+「客户端枚举/渲染/提交 vs 引擎 validate 不同源」类,外加两处 UI 交互回归与一批
+过时注释/测试空转。
+
+#### Changed — 引擎侧
+
+- `激将`/`界激将` use action 的 `activeWhen` 从 `() => isLordOwner(...)`(整体替换,
+  丢掉缺省门槛)改为 `defaultPlayActive(ctx) && isLordOwner(...)`:主公在别人回合/
+  阻塞 pending(被询问闪)期间不再枚举/点亮必拒的激将(AI 此前会反复 REJECT 到超时)。
+- `蛊惑`/`界蛊惑` `use:桃` activeWhen 从「场上任何人受伤」改为「自己受伤」(镜像
+  `桃` 的 `peachActiveWhen`):满血于吉此前会枚举出 dispatch 必拒的 `use:桃`
+  (selfTarget 锁自己、引擎拒满血目标)。`use:杀` validate 的 `canSlash` 补传 `cardId`,
+  按牌免次数豁免(成略/界弓骑)引擎侧同源生效。
+- `回合用量` atom 的 `__view/<key>` 镜像加归属守卫:仅 `atom.player === currentPlayerIndex`
+  时落镜像。此前非当前回合玩家写入(界鞬出 在别人回合被 借刀杀人/挑衅 逼杀)的镜像
+  会被 buildView 归到当前回合玩家头上,重连后 viewSlashMax ≠ 引擎 slashMax,枚举的
+  第 2 张杀必被拒。在线增量投影(按 event.player 归属)不受影响。
+- `TURN_SCOPED_VIEW_KEYS` 补 6 个既有回合内键:`双雄/color`、`界双雄/color`、
+  `审时/态`、`成略/态`、`当先/extraPhase`、`拒战/态`(具名常量单一来源)。漏注册
+  = 回合中重连后转化按钮消失/转换态门控丢失(在线视图有、重建视图没有)。
+- `tsconfig.json` exclude 补 `tmp/`:未跟踪的排查脚本不再阻断 `pnpm typecheck`。
+
+#### Changed — 客户端侧
+
+- `usePlayInteraction`:`transformSubmit.canSubmit` 折进产出牌门
+  (`selectedActive || isRespondTransformContext`),Enter 热键与按钮两条提交路径同源
+  ——满血玩家选 龙胆/界龙胆 产出桃时不再能经 Enter 提交必拒动作;`handleTransformPlay`
+  自由出牌分支镜像同一守卫。`handleCardDoubleClick` 首行清 `pendingSkillAction`
+  (双击出牌后 armed 的技能选目标模式不再泄漏到下一次点座位,避免误弃武器)。
+  `PlayInteractionResult.handleSkillAction` 类型对齐两参签名;错位 JSDoc 归位。
+- `PlayerCardLarge`:同 skillId 多 action(界父魂 transform+武圣transform、界矫诏/界渐营
+  每个声明名一个 action)现在以 action 自身 label 区分并生成唯一 key——此前全部渲染成
+  同名按钮且 React key 重复。
+- `CenterActionBar`:多卡转化「使用」按钮改以 `transformSubmit` 为唯一判定源(含
+  `comboFilter`)——乱击/界乱击 选两张异花色牌时按钮不再「可点但静默无效」。
+- `GameView`:弃牌超时预览改为镜像引擎 `请求回应` onTimeout 的保留优先级
+  (桃>杀>闪>无懈,低价值先弃),不再「标红引擎会保留的牌」;回应窗口内 Enter 可提交
+  转化(transformMode 分支提前);Esc 可退出技能选目标模式。
+- `HandArea`:转化模式手牌 overlay 逐牌按 `transform(card).name` 跟随实际方向
+  (此前钉死在进入模式时的样本名)。
+- `gameViewHelpers`:`findAltActionsForCard` 排除 `transform:` 前缀族——声明型转化
+  不再在选中任意手牌后冒出成排 alt 按钮(各有技能按钮入口)。
+- 无头枚举(`availableActions`):多卡转化分支补产出牌门(逐组合 `transform(c1).name`
+  + `hasUseEntry`/`isActiveAction`),与单卡分支对称;`choosePlayer` 且 `min>1` 镜像
+  selectTarget 的描述性多选形态(不再逐候选单目标展开必拒);selectTarget `min>1`
+  分支合并 `paramVariants`(不再丢必填 cost/cardId)。
+
+#### 测试(加固/补回归)
+
+- 激将/界激将:主公在别人回合/阻塞 pending 下空枚举(lord-skill-gate,修复前红)。
+- 蛊惑/界蛊惑:满血于吉 `use:桃` 不被枚举、`use:杀`/`use:酒` 仍枚举。
+- 界矫诏:七个负例从已删除的裸 `'transform'` dispatch(恒空转)迁移到
+  `'transform:杀'`/`'transform:无中生有'`,outputName 边界改枚举缺席断言
+  (已用改坏 validate 验证五条拒绝路径可达)。
+- 界强袭/强袭:枚举契约断言弃武器变体自带 cardId、damage 变体确实枚举;标版补
+  enumerate→dispatch 全变体接受。
+- 挑衅/界挑衅:4 人局目标过滤与 `inAttackRange` 逐一一致(占位 `return true` 复发即红)。
+- 龙胆双向(出牌 闪→杀 / 回应 杀→闪、闪→杀)与 界武联回应 纳入
+  transform-action-accepted e2e 契约。
+- 延时锦囊实体牌归属:补 3 个重洗场景(实体牌在牌堆时 过河拆桥/顺手牵羊/死亡清理
+  不转移不重复);涅槃/界涅槃/行殇 补「实体牌已在弃牌堆」分支用例(不双推/恰好移一次)。
+- `turnUsage-reconnect`:6 个新键数据驱动重连重建回归。
+- `额外出杀视图投影`:非当前回合玩家写 `杀/extra` 的镜像归属回归(修复前红)。
+- `deck-direction` 补五谷丰登取顶用例;`界鬼道` 测试 3 牌堆 fixture 翻转对齐
+  「末尾=顶」;`useDebugMultiConnection` 删除与引擎新投影打架的 2.5s linger 分支。
+
 ## [Unreleased] — 2026-09-27
 
 ### Fixed — 声明型主动技(蛊惑/界蛊惑)在真实客户端不可发动:声明须编码进 actionType
@@ -19,7 +89,7 @@ AI 枚举不出),只有技能测试手写 `declaredName` 能跑通。浏览器�
   (`use:杀` / `use:桃` / `use:酒`),声明由玩家点哪个按钮决定,前后端一一对应
   (与 界渐营/界矫诏 的 `transform:<牌名>` 同款约定)。闪仍只经 `dodge` 响应路径。
 - `蛊惑`/`界蛊惑` onMount:三个 action 各自声明 prompt —— 杀(攻击范围内选目标 +
-  `viewCanSlash` 出杀次数门槛)、桃(`selfTarget` 自疗,需场上有人受伤)、酒(无目标);
+  `viewCanSlash` 出杀次数门槛)、桃(`selfTarget` 自疗,需自己受伤)、酒(无目标);
   `cardFilter` 补 `filter`(`() => true`,扣置牌任意)让卡牌点击/替代出法路径能匹配。
 - `usePlayInteraction`:`handlePlayCard` / `handleCardDoubleClick` 提交 action 自己声明的
   `actionType`,不再硬编码 `'use'`(非 `'use'` 的 actionType 会被引擎按 action 条目查表)。
@@ -110,10 +180,10 @@ AI/MCP 客户端按文档「选 1~maxTarget 个」只会填 1 个目标,提交�
 
 ## [Unreleased] — 2026-09-26
 
-### Fixed — 客户端枚举/构造与引擎判据不同源(9 类「整技/整方向在真实客户端不可用」)
+### Fixed — 客户端枚举/构造与引擎判据不同源(10 类「整技/整方向在真实客户端不可用」)
 
 本轮以「客户端枚举 → 原样 dispatch」的契约扫描(tmp/sweep.ts,覆盖全部武将/装备技能 ×
-出牌/询问闪/询问杀/濒死/无懈 五个上下文)定位并修复同一根因的 9 类问题:引擎支持某条路径,
+出牌/询问闪/询问杀/濒死/无懈 五个上下文)定位并修复同一根因的 10 类问题:引擎支持某条路径,
 但浏览器 `usePlayInteraction` 或无头 `availableActions` 的枚举/参数构造与引擎 validate 不同源,
 表现为「按钮点了没反应」「AI 反复挑同一非法动作空转」,而技能测试手写另一种形状照样绿。
 
@@ -148,6 +218,253 @@ AI/MCP 客户端按文档「选 1~maxTarget 个」只会填 1 个目标,提交�
   浏览器侧回归追加到 `tests/client/usePlayInteraction.test.ts`(转化方向/组合约束/自目标语义)。
 - 契约与判据写入 `CLAUDE.md`「关键架构决策」(枚举-引擎一致性 / 目标形状归一 / 转化产出牌 /
   声明型转化 actionType),防止同类复发。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 被拒的转化动作把手牌/标记挪到数组末尾,客户端按位置选牌错位
+
+preceding(转化技的 当作/去标记 等)直接 mutate `players[i].hand` / `marks`,而各技能 rollback
+回调的恢复方式不一致:多张牌 push 回末尾(界父魂/乱击/丈八蛇矛)、单张写回影子卡所在位置
+(武圣/龙胆 等)——两者都把原牌/原标记挪到了数组末尾。手牌与标记顺序是客户端可见状态
+(UI 按数组顺序排列,`pickTargetCard` 盲选按 `handIndex` 位置取值),被拒动作把它改掉后,
+在线客户端(增量视图看不到被回滚的 preceding 事件)与权威 `buildView` 顺序永久不一致 →
+玩家按位置选到的牌与点击的不是同一张。
+
+#### Changed
+
+- `dispatch` 在跑 preceding 之前快照各玩家的 hand/marks,回滚(任一 reject 路径)后按快照
+  整体还原内容与顺序——一处覆盖全部转化技(单张/多张、当作式/直接 mutate 式)。(`src/engine/core/index.ts`)
+
+#### 测试
+
+- 新增 `tests/engine/rollback-order.test.ts`(修复前 2/2 红):武圣转化被拒(目标非法)→
+  手牌顺序还原;急袭转化被拒(田当顺手牵羊超距离)→ 田标记顺序不变。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 影子卡 id 后缀写成技能名:界武圣/界疠火/界父魂 的转化在客户端整类恒拒
+
+客户端(浏览器 `usePlayInteraction` 与无头 `availableActions`)构造主 action 的 cardId 约定为
+`${选中牌 id 以 # 连接}#${skillId}`,skillId = 注册该 transform action 的技能 id。但三个界版
+技能的影子 id 后缀写成了技能名:`界武圣 → #武圣`、`界疠火 → #疠火`、`界父魂 → #父魂/#父魂武圣`,
+引擎创建的影子 id 与客户端提交的不一致 → 主 action 读不到 `cardMap[影子 id]` → validate 恒失败
+(随机自对弈实测 seed 21 单局 8 次 `杀:use {"cardId":"A#B#界父魂"}` 全部 rejected)。
+
+#### Changed
+
+- 三处影子 id 后缀统一为技能 id(与其余 20 余个转化技一致)。
+- 无头枚举的转化判据由 `actionType === 'transform'` 放宽为 `action.transform` 存在(与浏览器
+  `PlayerCardLarge` 同判据),并把 preceding 的 actionType 回填为 action 自身的 actionType——
+  否则界父魂 granted 的 `武圣transform`(1 张红牌当杀)在 AI 客户端完全枚举不到,且即使枚举到
+  也会去跑同技能的两张牌转化。
+
+#### 测试
+
+- 新增 `tests/headless/transform-action-accepted.test.ts`:先让客户端枚举 action、再原样 dispatch,
+  锁死「客户端构造的 id == 引擎创建的 id」端到端契约(修复前 4/4 红);界武圣/界疠火/界父魂
+  既有用例同步改用新 id。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 判定牌离开处理区不走 atom,增量视图弃牌堆/手牌数漂移
+
+判定 atom 的 applyView 曾静态预支 `discardPileCount+1`(假设判定牌必然进弃牌堆),而判定牌的
+真实去向由 runJudgeFlow 收尾与改判决定:天妒/双雄/界落英 用「移动牌」拿走、屯田/界屯田 直接
+mutate 帧顶收作"田"、鬼才/鬼道/界鬼才/界鬼道 改判时直接 mutate 帧顶+手牌+弃牌堆——这些路径
+都不产生 ViewEvent,增量视图(processedView/前端 viewReducer)与权威 buildView 永久漂移
+(弃牌堆计数虚高 1、改判者手牌数多 1,公开信息错误)。
+
+#### Changed
+
+- `判定.applyView` 改为与 apply 对称:deckCount-1 + 判定牌进 processing/帧牌区,不预支弃牌堆计数。
+- runJudgeFlow 收尾(判定牌入弃牌堆)改走「移动牌」atom;新增「收取判定牌」atom,屯田/界屯田
+  把判定牌收作"田"改用它(与判定对称的 view 通道)。
+- 鬼才/鬼道/界鬼才/界鬼道 的改判抽出 `flows/judge.ts` 的 `replaceJudgeCard`:原判定牌「移动牌」
+  入弃牌堆 + 替换牌「移动牌」打出到帧顶。
+- `buildView.zones.processing` 补投影 `state.zones.processing`(无帧暂存区),否则无帧判定/
+  respond 打出时前端有牌、权威视图没有。
+
+#### 测试
+
+- 此前 25 个用例(屯田/界屯田/双雄/天妒/雷击/界雷击/鬼道/鬼才/界鬼道/界鬼才/界落英/急袭)只能靠
+  `disableAutoCompare` 绕过视图一致性断言,现已全部移除绕过并转绿;
+  `tests/engine/applyView-consistency.test.ts` 同步断言新契约(判定/收取判定牌 atom)。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 出杀/距离放宽不投影 view:引擎放行的动作客户端发不出、目标选不中
+
+view 层(`viewSlashMax`/`viewCanSlash`/`viewEffectiveDistance`/`viewCanAttack`)是浏览器按钮、
+选目标置灰与无头/AI 枚举的唯一判据,但一批技能的放宽只写 `state.turn.vars`、从不投影 view:
+出杀族(雄乱②/界陷阵 无次数限制、界鞬出/立军 次数 +1)在 view 侧上限仍恒 1 → 出过 1 张杀后
+按钮/动作消失,第 2 张杀发不出;距离族(天义 攻击范围无限、雄乱①/决堰·坐骑栏 无距离限制、
+往烈 首张牌无距离限制)在 view 侧仍按座位距离/徒手范围判定 → 超出范围的目标置灰选不中。
+
+#### Changed
+
+- 技能在写 state.turn.vars 后补「回合用量」投影:出杀族用 `'杀/extra/<技能>'`、
+  `'杀/unlimited/<技能>'` 前缀键,距离族用具名键(`vars-keys.ts` 新增 天义/win、决堰/本回合:坐骑、
+  往烈/首张可用、雄乱/目标 并收进 `TURN_SCOPED_VIEW_KEYS`);`viewDistance`/`viewCanAttack`
+  补对应豁免。
+- 投影键必须能从 state 重建(否则在线视图有、初始/重连视图没有):「回合用量」atom 把投影值
+  镜像进 `turn.vars` 的 `'杀/'` 前缀与 `'__view/<key>'`(独立前缀,不覆盖同名 state 键——
+  界弓骑/active 等的 state 值与 view 值语义不同),`buildView` 据此还原当前回合玩家的 turnUsage。
+
+#### 测试
+
+- 新增 `tests/integration/额外出杀视图投影.test.ts` 与 `tests/integration/距离放宽视图投影.test.ts`
+  (修复前全红):四技能各自真实触发(雄乱发动/界陷阵拼点赢/界鞬出非基本牌/立军主公确认、
+  天义拼点赢/决堰选坐骑栏/往烈阶段开始与首张牌用出),断言 `viewSlashMax===slashMax`、
+  `viewEffectiveDistance===effectiveDistance`、`viewCanAttack===inAttackRange`。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — buildView:专属 slot 处于 paused 时不回退广播 slot,无懈询问重连后看不到
+
+buildView(初始视图/重连视图)的 pending 选择:viewer 自己的 slot 处于 paused(该玩家的 respond
+execute 尚未结束,如「出牌窗口 slot 被 pause、execute 挂起在无懈可击广播 slot 上」)时,原实现
+直接丢弃自己 slot 并回退 observer 分支;而 observer 分支只认 target>=0 的其他玩家 slot,广播型
+slot(target=-2)被跳过 → 该 viewer 的 buildView.pending 为 null,而事件流里无懈可击询问明明
+开着。玩家在自己动作触发的无懈可击询问期间重连,看不到询问、无法回应。
+
+#### Changed
+
+- 自己 slot 被 pause 时继续回退广播型 slot(该 slot 对 viewer 可回应,增量视图同样为所有存活
+  viewer 投影广播询问);无广播 slot 时才交给 observer 分支。(`src/engine/view/buildView.ts`)
+
+#### 测试
+
+- 新增 `tests/engine/pending-broadcast-fallback.test.ts`(修复前 1 失败):出牌窗口 slot 被
+  pause + 无懈可击广播 slot 存活 → buildView(viewer) 的 pending.requestType === '无懈可击'
+  且 target === -2;回归:无广播 slot 时 paused 专属 slot 仍交给 observer 分支。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 判定区实体牌双重归属:四处「清空判定区」把快照牌当实体牌二次入区
+
+延时锦囊(乐不思蜀/兵粮寸断/闪电)的实体牌在「使用时」就已入弃牌堆(use-card.ts 的 delayed
+分支),判定区 pendingTricks 只持有牌面快照 `{ name, source, card }`。但四处「清空判定区」的
+代码把它当实体牌再次入区,破坏「牌唯一归属」:顺手牵羊/反馈 取判定区牌(牌同时在弃牌堆与
+手牌)、过河拆桥 拆判定区牌(弃牌堆同一张牌出现两次)、死亡清理 系统处理牌(重洗后同牌两个
+实例)、涅槃/界涅槃 弃判定区牌、行殇 获得死亡角色判定区牌。随机自对弈实测
+`闪电-♠A-28 ×2: 弃牌堆/弃牌堆`、`弃牌堆/玩家3.手牌` 两种形态均被牌唯一归属不变量抓到。
+
+#### Changed
+
+- 新增 `src/engine/core/judge-zone.ts` 原语(实体牌定位 + 按实际归属处置):
+  `locateCard`(牌当前所在区:牌堆/弃牌堆/处理区/手牌/装备/结算帧)、
+  `discardJudgeZoneCard`(实体牌已在某区则不再入堆,仅补入未实体化的快照牌)、
+  `obtainJudgeZoneCard`(实体牌在弃牌堆则从弃牌堆移入获得方手牌;未实体化则直接进手牌;
+  快照过期——牌已重洗/被他人获得——则不转移)。
+- 调用点:flows/pick-card-panel(judge 分支)、atoms/death-timing(系统处理牌 + 视图计数改用
+  事件携带的实际入堆张数)、skills/涅槃|界涅槃、skills/行殇。
+
+#### 测试
+
+- 新增 `tests/integration/延时锦囊实体牌归属.test.ts`(修复前 5 失败):顺手牵羊端到端取判定区
+  (实体牌从弃牌堆移入手牌、弃牌堆不再含该牌)、过河拆桥拆判定区不重复、死亡清理不重复、
+  涅槃不重复、行殇从弃牌堆取牌不复制、未实体化快照牌仍正常入堆。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 倾国/龙胆/看破 在闪/无懈回应窗口两处客户端都拿不到动作,只能 skip
+
+引擎侧本是对的(倾国 onInit 已 `declareAlternativeResponse('询问闪')`,技能测试直接 dispatch
+转化回应可通),但两处客户端都枚举/渲染不出「转化后当闪/无懈打出」这条路径:无头
+`enumerateTransformActions` 的回应分支只认「被询问杀」且要求转化后牌名 === '杀',还只接受
+useCardAndTarget 型 prompt → 倾国(黑牌当闪)/龙胆(杀当闪)/看破(黑牌当无懈)全部枚举不到,
+AI 被要求出闪时唯一可选项是「无牌可出,跳过」;浏览器 `triggerableActions` 不收 useCard+transform,
+`handleTransformPlay` 的回应分支只认 isKillRespondContext → 即便进入转化模式也会走 use
+路径提交错误 action。
+
+#### Changed
+
+- 回应上下文泛化为「pending 请求的牌名 = 转化后牌名」:询问X → X;请求回应 `'R/...'` → R;
+  广播型(target<0,无懈可击)对所有存活座次开放。`usePlayInteraction` 的
+  `isRespondTransformContext` 取代 `isKillRespondContext`(后者已无使用点,删除),
+  GameView/HandArea/CenterActionBar 的转化回应按钮、座位可点性、Enter 提交全部改用泛化标志;
+  移除 handleCardDoubleClick 里过宽的 isKillRespondContext 守卫(泛化后会拦掉「询问闪+字面闪
+  双击直接打出」的快捷路径)。
+- `handleSkillAction` 补 useCard+transform 分支(进入转化选牌模式,wrapperName 由 transform 对
+  代表性匹配牌求值);`PlayerCardLarge.triggerableActions` 纳入 useCard+transform(倾国/看破
+  按钮出现);`enumerateTransformActions` 的 cardFilter 同时接受 useCard 与 useCardAndTarget 型
+  prompt,回应分支 skillId/描述由硬编码 '杀' 改为请求牌名。
+
+#### 测试
+
+- `tests/headless/availableActions.test.ts` +4:询问闪+倾国 → `闪.respond` + preceding、
+  询问闪+龙胆(useCardAndTarget 型)同源可用、手中无黑牌不生成、回归 询问杀+武圣 仍生成;
+- `tests/integration/gameview-skill-button.test.tsx` +1:被询问闪时倾国按钮出现 → 选黑牌 →
+  提交 `{ skillId:'闪', actionType:'respond', params:{cardId:'k1#倾国'}, preceding:[倾国.transform] }`。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — confirm/selectTarget/choosePlayer/chooseOption 型主动技:浏览器无按钮、AI 枚举不出
+
+`PlayerCardLarge.triggerableActions` 只收 confirm/choosePlayer/(useCardAndTarget+transform)/
+distribute → selectTarget 型主动技整类不渲染按钮(挑衅/界挑衅/强袭/界强袭/反间/攻心/雄乱/
+界翦灭/界势斩/界解烦/界献州 等 11 个),浏览器里点不到;无头 `enumerateAvailableActions`
+只覆盖 useCard/useCardAndTarget/distribute 三种 prompt → confirm(苦肉/缔盟/据守/奇谋/成略/
+界国色/界焚城/乱武 等 14 个)、selectTarget、choosePlayer(激将/界激将)、chooseOption(决堰)
+的主动 use action 完全不产出,AI(MCP play)永远看不到。同时浏览器缺「进入选目标模式」的入口
+(座位环只在 playRules.needsTarget 时进入可选目标态),且 selectTarget 分支只发 `params.target`
+而反间/攻心/雄乱 读 `params.targets`。
+
+#### Changed
+
+- `triggerableActions` 纳入 selectTarget;`usePlayInteraction` 新增主动技选目标模式
+  (pendingSkillAction):点 selectTarget/choosePlayer 型技能按钮 → 座位环按该 action 的
+  prompt(targetFilter.filter/candidates)高亮 → 单选技能(max<=1)点目标座位即提交;
+  提交同时带 target 与 targets(单选也必须为长度 1 的数组)。
+- 新增 `enumeratePromptActions`(无头侧按 prompt 类型产出可直接提交的 action,params 形状与
+  前端 handleSkillAction 各分支一致:confirm → {}、selectTarget/choosePlayer → {target,targets}、
+  chooseOption → {option};selectTarget 逐目标、chooseOption 逐选项展开);
+  `SelectTargetPrompt` 新增可选 `paramVariants`(数据驱动的提交参数变体),强袭/界强袭 声明
+  代价二选一 `{cost:'hp'|'discard'}`——此前无论谁提交都缺 cost,引擎恒拒;浏览器侧
+  `skillActionVariants` 按变体渲染按钮(「强袭·失去1点体力」/「强袭·弃一张武器牌」),点击时
+  把变体 params 并入提交。
+
+#### 测试
+
+- `tests/headless/availableActions.test.ts` +7 单测 +1 端到端(苦肉枚举出的 message 直接
+  dispatch → 引擎接受且生效,基线 6 用例失败);
+- `tests/integration/gameview-skill-button.test.tsx` 追加 挑衅(选目标模式提交
+  `{target,targets}`)与 强袭(双代价变体按钮)用例(修复前红)。
+
+## [Unreleased] — 2026-09-24
+
+### Fixed — 牌堆方向分裂:判定/红颜/界红颜/五谷丰登 曾从牌堆底取牌
+
+约定 `zones.deck` 末尾 = 牌堆顶(摸牌 slice(-count)、置创牌 pop、整理牌堆/观星/恂恂、
+遗计/涯角/界称象/界恂恂 全按此取牌),但 判定 atom 及其从属三处仍用旧方向(deck[0]=顶),
+同一牌堆两套取牌方向:判定翻开的不是牌堆顶(观星/恂恂/罪论/界称象 置顶的牌对判定完全无效,
+诸葛亮无法用观星控制自己的判定)、判定牌与随后摸牌抽出的牌不同源、五谷丰登亮出的是牌堆底
+的牌。
+
+#### Changed
+
+- 判定.apply:`deck.shift()` → `deck.pop()`;toViewEvents 的 peek 同步改为末尾(toViewEvents
+  在 apply 前调用,两处必须同向,否则视图与权威状态发散);红颜/界红颜「判定前把牌堆顶黑桃
+  视为红桃」的改判 peek、五谷丰登亮牌逐张取顶,同步同向。
+
+#### 测试
+
+- 新增 `tests/engine/deck-direction.test.ts`(基线 3 用例全失败:判定返回牌堆底):判定翻开的
+  牌 = 牌堆顶;判定消耗顶牌后摸牌抽出的仍是新的牌堆顶(两机制同向);红颜改花色的对象 =
+  实际翻开的牌;文件头所列消费者五谷丰登(亮牌从末尾逐张)亦锁定在内。
+- 12 个既有测试文件的牌堆夹具按新方向重排(夹具意图不变:把「应先被判定/亮出」的牌放到
+  数组末尾),含 洛神/界洛神/悲歌/界悲歌/颂威/五谷丰登/乐不思蜀/闪电判定/界雷击/界鬼道/双雄。
+
+## [Unreleased] — 2026-09-23
+
+### Added — GameView 快捷键徽标、双击快速出牌、禁用态提示
+
+- 回应/出牌窗口的快捷键徽标与 tooltip(Enter 出牌/打出、空格 不回应、Esc 取消选择、E 等);
+  被询问时手牌可回应牌双击直接打出(一次动作,不经「打出」按钮);自由出牌阶段无目标牌
+  (无中生有)双击直接发起 use action,需目标的牌(杀)双击仅选中。
+- 0 候选回应窗口渲染醒目的一键「无牌可出 · 不回应」(替代置灰「打出」),点击发送空 respond
+  (skip 语义);置灰按钮补 disabled hint 说明。
+- 新增 `tests/integration/gameview-respond-quick.test.tsx` 覆盖上述交互。
 
 ## [Unreleased] — 2026-08-16
 

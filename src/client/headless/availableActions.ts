@@ -242,25 +242,41 @@ function enumerateTransformActions(
 
       const targetFilter = getTargetFilter(action.prompt);
       const rules = derivePlayRules(targetFilter, getSelfTarget(action.prompt));
-      const validTargets = computeValidTargets(view, seatIndex, targetFilter, rules);
-      // 需要目标但无合法目标(如距离不够)→ 跳过
-      if (rules.needsTarget && !rules.selfTarget && validTargets.length === 0) continue;
-      // 产出牌名由 transform 回调决定(与单卡分支同判据):丈八蛇矛 → 杀,乱击/界乱击 → 万箭齐发。
-      // 硬编码 '杀' 会让非杀产出(乱击族)的主 action 恒为 杀.use,引擎读影子卡名(万箭齐发)
-      // validate 恒拒「不是杀」→ 该转化技在无头/AI 客户端整类不可用。
-      const wrapperName = matchingCards[0] ? action.transform!(matchingCards[0]).name : '杀';
-      const slashMax =
-        wrapperName === '杀' && rules.needsTarget && !rules.selfTarget
-          ? viewSlashTargetMax(view, seatIndex, { name: '杀' })
-          : undefined;
       for (let i = 0; i < matchingCards.length; i++) {
         for (let j = i + 1; j < matchingCards.length; j++) {
           const c1 = matchingCards[i];
           const c2 = matchingCards[j];
           if (!combosOk(c1, c2)) continue;
+          // 产出牌名由 transform 回调**逐组合**求值(与单卡分支同判据):丈八蛇矛 → 杀,
+          // 乱击/界乱击 → 万箭齐发;多向转化技(产出牌名随组合变化)不能只按
+          // matchingCards[0] 取一次。硬编码 '杀' 会让非杀产出的主 action 恒为 杀.use,
+          // 引擎读影子卡名 validate 恒拒「不是杀」→ 该转化技整类不可用。
+          const wrapperName = action.transform!(c1).name;
+          // 产出牌门(与单卡分支对称):产出牌无主动 use 入口(闪/无懈可击 等
+          // timing='生效前')、或产出牌的 use action 未激活(桃 需已受伤)时不枚举
+          // 必拒动作;目标语义取产出牌自己的 use action,而非 transform 自身的
+          // targetFilter(那是为原料牌方向设计的)。
+          const produced = findUseActionForCard(skillActions, { ...c1, name: wrapperName });
+          if (!hasUseEntry({ name: wrapperName } as Card)) continue;
+          if (produced && !isActiveAction(produced, ctx)) continue;
+          const cardTargetFilter = produced ? getTargetFilter(produced.prompt) : targetFilter;
+          const cardRules = produced
+            ? derivePlayRules(cardTargetFilter, getSelfTarget(produced.prompt))
+            : rules;
+          const validTargets = computeValidTargets(view, seatIndex, cardTargetFilter, cardRules);
+          // 需要目标但无合法目标(如距离不够)→ 跳过该组合
+          if (cardRules.needsTarget && !cardRules.selfTarget && validTargets.length === 0) continue;
           const shadowCardId = `${c1.id}#${c2.id}#${action.skillId}`;
           const desc = `${c1.suit}${c1.rank}+${c2.suit}${c2.rank}`;
-          const bounds = targetBounds(targetFilter, rules);
+          const bounds = targetBounds(cardTargetFilter, cardRules);
+          const slashMax =
+            wrapperName === '杀' && cardRules.needsTarget && !cardRules.selfTarget
+              ? viewSlashTargetMax(view, seatIndex, { name: '杀' })
+              : undefined;
+          // selfTarget 产出牌(桃/酒):与单卡分支/ buildPlayParams 同源预填 targets=[自己]
+          const mainParams: EngineClientMessage['params'] = cardRules.selfTarget
+            ? { cardId: shadowCardId, targets: [seatIndex] }
+            : { cardId: shadowCardId };
           result.push({
             description:
               wrapperName === '杀' && slashMax && slashMax > 1
@@ -270,7 +286,7 @@ function enumerateTransformActions(
               skillId: wrapperName,
               actionType: 'use',
               ownerId: seatIndex,
-              params: { cardId: shadowCardId },
+              params: mainParams,
               preceding: [
                 {
                   skillId: action.skillId,
@@ -518,7 +534,10 @@ function enumerateAltActions(
  *   - selectTarget(挑衅/强袭/反间/攻心/雄乱/界翦灭/界势斩/界解烦/界献州):params.target
  *     (+ targets 数组,反间/雄乱 读 targets);prompt.paramVariants 声明的额外参数
  *     (强袭代价 cost)按「变体 × 目标」展开,避免提交缺参被 validate 拒。
- *   - choosePlayer(激将/界激将):每个候选目标一个 action(params.target)
+ *     targetFilter.min>1 的多目标技能改为描述性 action(validTargets + minTarget,
+ *     agent 填 targets),paramVariants 同样按变体展开。
+ *   - choosePlayer(激将/界激将):每个候选目标一个 action(params.target);
+ *     prompt.min>1 时镜像 selectTarget 的描述性多选 action。
  *   - chooseOption(决堰):每个选项一个 action(params.option)
  *
  * 此前这四类 prompt 无任何枚举路径(只有 useCard/useCardAndTarget/distribute 三种),
@@ -531,6 +550,7 @@ function enumeratePromptActions(
 ): AvailableAction[] {
   const ctx: ActionContext = { view, perspectiveIdx: seatIndex };
   const me = view.players[seatIndex];
+  if (!me?.hand) return [];
   const result: AvailableAction[] = [];
   for (const action of skillActions) {
     if (action.actionType !== 'use') continue;
@@ -591,25 +611,8 @@ function enumeratePromptActions(
     }
     if (validTargets.length === 0) continue;
 
-    // 多目标技能(selectTarget 且 targetFilter.min>1,如「两名男性角色」类):
-    // 逐目标展开的 action 每个只带 1 个目标 → 引擎 validate 必拒「目标数不足」。
-    // 改为一个描述性 action:validTargets 给全集,minTarget/maxTarget 给边界,
-    // agent 据此选 minTarget..maxTarget 个(与 choosePlayer 多选分支同构)。
-    if (prompt.type === 'selectTarget' && (prompt.targetFilter.min ?? 1) > 1) {
-      const min = prompt.targetFilter.min ?? 1;
-      const max = prompt.targetFilter.max ?? min;
-      result.push({
-        description: `发动【${action.label}】(选 ${min}${max > min ? `-${max}` : ''} 个目标)`,
-        message: { ...base, params: { targets: [] } },
-        validTargets,
-        category: 'play',
-        minTarget: min,
-        ...(max > 1 ? { maxTarget: max } : {}),
-      });
-      continue;
-    }
-
-    // paramVariants(强袭代价 等):每个变体一个 action;缺省单个无额外参数的变体
+    // paramVariants(强袭代价 等):每个变体一个 action;缺省单个无额外参数的变体。
+    // 多选分支(min>1)同样要展开,否则丢必填 cost/cardId(见下)。
     const variants =
       prompt.type === 'selectTarget' && prompt.paramVariants?.length
         ? prompt.paramVariants
@@ -619,18 +622,67 @@ function enumeratePromptActions(
     const equipIds = new Set(
       Object.values(me.equipment ?? {}).filter((id): id is string => typeof id === 'string'),
     );
+    const costCardsOf = (variant: (typeof variants)[number]): Array<Card | undefined> =>
+      variant.cardFilter
+        ? [
+            ...(me.hand ?? []).filter((c) => variant.cardFilter!(c)),
+            ...[...equipIds]
+              .map((id) => view.cardMap[id])
+              .filter((c): c is Card => !!c && variant.cardFilter!(c)),
+          ]
+        : [undefined];
+
+    // 多目标技能(selectTarget.targetFilter.min>1 或 choosePlayer.min>1,如「两名男性角色」类):
+    // 逐目标展开的 action 每个只带 1 个目标 → 引擎 validate 必拒「目标数不足」
+    // (choosePlayer 同理:prompt.min>1 时单候选展开同样必拒)。
+    // 改为描述性 action:validTargets 给全集,minTarget/maxTarget 给边界,
+    // agent 据此选 minTarget..maxTarget 个;paramVariants 按变体(× 代价牌)各生成
+    // 一个描述性 action(与 min=1 的变体展开形态一致),携带 cost/cardId。
+    const multiMin =
+      prompt.type === 'selectTarget'
+        ? (prompt.targetFilter.min ?? 1)
+        : prompt.type === 'choosePlayer'
+          ? (prompt.min ?? 1)
+          : 1;
+    if (multiMin > 1) {
+      const max =
+        prompt.type === 'selectTarget'
+          ? (prompt.targetFilter.max ?? multiMin)
+          : prompt.type === 'choosePlayer'
+            ? (prompt.max ?? multiMin)
+            : multiMin;
+      for (const variant of variants) {
+        const suffix = variant.label ? `(${variant.label})` : '';
+        const costCards = costCardsOf(variant);
+        if (variant.cardFilter && costCards.length === 0) continue; // 无代价牌 → 该变体不可用
+        for (const costCard of costCards) {
+          const cardSuffix = costCard ? `(${costCard.suit}${costCard.rank})` : '';
+          result.push({
+            description: `发动【${action.label}】${suffix}${cardSuffix}(选 ${multiMin}${max > multiMin ? `-${max}` : ''} 个目标)`,
+            message: {
+              ...base,
+              // targets 留空由 agent 从 validTargets 中选 minTarget..maxTarget 个填入
+              params: {
+                targets: [],
+                ...variant.params,
+                ...(costCard ? { cardId: costCard.id } : {}),
+              },
+            },
+            validTargets,
+            category: 'play',
+            minTarget: multiMin,
+            ...(max > 1 ? { maxTarget: max } : {}),
+          });
+        }
+      }
+      continue;
+    }
+
     for (const t of validTargets) {
       const targetName = view.players[t]?.name ?? `P${t}`;
       for (const variant of variants) {
         const suffix = variant.label ? `(${variant.label})` : '';
-        const costCards = variant.cardFilter
-          ? [
-              ...(me.hand ?? []).filter((c) => variant.cardFilter!(c)),
-              ...[...equipIds]
-                .map((id) => view.cardMap[id])
-                .filter((c): c is Card => !!c && variant.cardFilter!(c)),
-            ]
-          : [undefined];
+        const costCards = costCardsOf(variant);
         if (variant.cardFilter && costCards.length === 0) continue; // 无代价牌 → 该变体不可用
         for (const costCard of costCards) {
           const cardSuffix = costCard ? `(${costCard.suit}${costCard.rank})` : '';

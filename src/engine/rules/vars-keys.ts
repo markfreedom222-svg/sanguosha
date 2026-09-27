@@ -116,6 +116,23 @@ export const JUEYAN_MOUNT_VIEW_KEY = '决堰/本回合:坐骑';
 export const WANGLIE_FIRST_VIEW_KEY = '往烈/首张可用';
 /** 本回合对其使用牌无距离限制(值=目标座次)。写:雄乱;读:viewDistance。 */
 export const XIONGLUAN_TARGET_VIEW_KEY = '雄乱/目标';
+/** 拼点判定牌颜色(红/黑;异色手牌当【决斗】的门控)。写:双雄(COLOR_KEY 别名);读:双雄 activeWhen/cardFilter, buildView。 */
+export const SHUANGXIONG_COLOR_VIEW_KEY = '双雄/color';
+/** 摸牌阶段弃置牌颜色(红/黑;异色手牌当【决斗】的门控)。写:界双雄(COLOR_KEY 别名);读:界双雄 activeWhen/cardFilter, buildView。 */
+export const JIESHUANGXIONG_COLOR_VIEW_KEY = '界双雄/color';
+/** 转换技当前态(阳/阴;阴态走被动 hook,阳态出牌阶段限一次)。写:审时(STATE_VIEW_KEY 别名,含回合开始重同步);读:审时 activeWhen, buildView。 */
+export const SHENSHI_STATE_VIEW_KEY = '审时/态';
+/** 转换技当前态(阳/阴;决定本回合摸弃张数选项)。写:成略(STATE_VIEW_KEY 别名,含回合开始重同步);读:成略 activeWhen, buildView。 */
+export const CHENGLUE_STATE_VIEW_KEY = '成略/态';
+/** 额外出牌阶段激活(布尔;'end' 动作 activeWhen 据此区分额外/正常出牌阶段)。写:界当先(EXTRA_PHASE_TU 别名);读:界当先 end action activeWhen, buildView。 */
+export const DANGXIAN_EXTRA_PHASE_VIEW_KEY = '当先/extraPhase';
+/** 转换技当前态(阳/阴;决定被动方向:阳=各摸一张+禁对方用牌,阴=获得其一张牌+己方禁用)。写:拒战(STATE_VIEW_KEY 别名);读:拒战 activeWhen, buildView。 */
+export const JUZHAN_STATE_VIEW_KEY = '拒战/态';
+
+/** turn.vars 中的 view 镜像前缀:『回合用量』atom 把投影值写在 '__view/<key>' 下,
+ *  buildView(初始/重连视图)按此前缀还原 turnUsage——投影值形态与 state 侧无关
+ *  (如 界弓骑/active state 侧存座次、view 侧存 true),不覆盖 state 侧键、可反复更新。 */
+export const VIEW_MIRROR_PREFIX = '__view/';
 
 /** 回合内 view 投影键(值存 turn.vars,「回合用量」atom 同步到在线视图)。
  *  buildView(初始/重连视图)据此从 state 重建 turnUsage —— 否则这些放宽只存在于
@@ -123,11 +140,6 @@ export const XIONGLUAN_TARGET_VIEW_KEY = '雄乱/目标';
  *  仅收「本回合、归属当前回合玩家」的键(值可直接投影给 state.currentPlayerIndex);
  *  按玩家维度存储的限一次标记(如 '制衡/usedThisTurn',存 player.vars)不在其列,
  *  由 buildView 的 USED_THIS_TURN_SUFFIX 过滤单独投影。 */
-/** turn.vars 中的 view 镜像前缀:『回合用量』atom 把投影值写在 '__view/<key>' 下,
- *  buildView(初始/重连视图)按此前缀还原 turnUsage——投影值形态与 state 侧无关
- *  (如 界弓骑/active state 侧存座次、view 侧存 true),不覆盖 state 侧键、可反复更新。 */
-export const VIEW_MIRROR_PREFIX = '__view/';
-
 export const TURN_SCOPED_VIEW_KEYS: readonly string[] = [
   XIANZHEN_WIN_TARGET_VIEW_KEY,
   CHENGLUE_SUITS_VIEW_KEY,
@@ -138,6 +150,12 @@ export const TURN_SCOPED_VIEW_KEYS: readonly string[] = [
   JUEYAN_MOUNT_VIEW_KEY,
   WANGLIE_FIRST_VIEW_KEY,
   XIONGLUAN_TARGET_VIEW_KEY,
+  SHUANGXIONG_COLOR_VIEW_KEY,
+  JIESHUANGXIONG_COLOR_VIEW_KEY,
+  SHENSHI_STATE_VIEW_KEY,
+  CHENGLUE_STATE_VIEW_KEY,
+  DANGXIAN_EXTRA_PHASE_VIEW_KEY,
+  JUZHAN_STATE_VIEW_KEY,
 ];
 
 // ── helpers:带后缀/前缀的拼接 key ──────────────────────────

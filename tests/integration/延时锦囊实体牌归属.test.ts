@@ -13,6 +13,9 @@
 //   3. 死亡清理(系统处理牌):判定区延时锦囊不重复入弃牌堆
 //   4. 涅槃:判定区延时锦囊不重复入弃牌堆
 //   5. 行殇:判定区延时锦囊从弃牌堆移入发动者手牌(不复制)
+//   6. 回归:实体牌不在任何区(历史快照)仍正常补入弃牌堆
+//   7-9. 重洗场景:实体牌已被重洗回牌堆(快照过期)——拆/顺/死亡清理
+//        都不得转移或复制这张牌(牌堆恰好保留一张)
 import { describe, it, expect, beforeEach } from 'vitest';
 import { registerSkillsFromState } from '../../src/engine/index';
 import { dispatchAndWait, fireTimeoutAndWait, SkillTestHarness } from '../engine-harness';
@@ -298,5 +301,95 @@ describe('延时锦囊实体牌归属(判定区只持快照,实体牌已在弃�
 
     expect(state.players[1].pendingTricks).toEqual([]);
     expect(state.zones.discardPile).toContain('lb1');
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // 7-9. 重洗场景:弃牌堆重洗后,实体牌已回到牌堆,判定区只剩过期快照。
+  //     清判定区路径不得把这张「快照牌」转移/复制到任何其他牌区
+  //     (judge-zone 的「牌在某区时不再动作」与「牌在牌堆时不转移」分支)。
+  // ─────────────────────────────────────────────────────────────
+  it('重洗场景:实体牌已回牌堆,过河拆桥拆判定区不动牌堆中的实体牌', async () => {
+    const lebu = mkCard('lb1', '乐不思蜀');
+    const gq = mkCard('gq1', '过河拆桥', '♣', '4');
+    const state = createGameState({
+      players: [
+        mkPlayer({ index: 0, name: 'P0', hand: ['gq1'], skills: ['回合管理', '过河拆桥'] }),
+        mkPlayer({ index: 1, name: 'P1' }),
+      ],
+      cardMap: { lb1: lebu, gq1: gq },
+      // 重洗后的状态:实体牌在牌堆(末尾 = 牌堆顶),判定区只剩过期快照
+      zones: { deck: ['lb1'], discardPile: [], processing: [] },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.players[1].pendingTricks = [{ name: '乐不思蜀', source: 0, card: lebu }];
+    await harness.setup(state);
+
+    await harness.player('P0').useCardAndTarget('过河拆桥', 'gq1', [1]);
+    await fireTimeoutAndWait(state);
+    await harness.player('P0').respond('过河拆桥', { zone: 'judge', cardId: 'lb1' });
+
+    expect(state.players[1].pendingTricks).toEqual([]);
+    // 实体牌留在牌堆且恰好一张,不被复制进弃牌堆
+    expect(state.zones.deck.filter((id) => id === 'lb1')).toHaveLength(1);
+    expect(state.zones.discardPile).not.toContain('lb1');
+    expectNoDuplicateInDiscard(state);
+    assertCardInvariants(state);
+  });
+
+  it('重洗场景:实体牌已回牌堆,顺手牵羊取判定区不转移牌堆中的实体牌', async () => {
+    const lebu = mkCard('lb1', '乐不思蜀');
+    const snatch = mkCard('ss1', '顺手牵羊', '♦', '3');
+    const state = createGameState({
+      players: [
+        mkPlayer({ index: 0, name: 'P0', hand: ['ss1'], skills: ['回合管理', '顺手牵羊'] }),
+        mkPlayer({ index: 1, name: 'P1' }),
+      ],
+      cardMap: { lb1: lebu, ss1: snatch },
+      zones: { deck: ['lb1'], discardPile: [], processing: [] },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.players[1].pendingTricks = [{ name: '乐不思蜀', source: 0, card: lebu }];
+    await harness.setup(state);
+
+    await harness.player('P0').useCardAndTarget('顺手牵羊', 'ss1', [1]);
+    await fireTimeoutAndWait(state);
+    await harness.player('P0').respond('顺手牵羊', { zone: 'judge', cardId: 'lb1' });
+
+    expect(state.players[1].pendingTricks).toEqual([]);
+    // 快照过期:实体牌留在牌堆(恰好一张),不进使用者手牌,也不复制进弃牌堆
+    expect(state.zones.deck.filter((id) => id === 'lb1')).toHaveLength(1);
+    expect(state.players[0].hand).not.toContain('lb1');
+    expect(state.zones.discardPile).not.toContain('lb1');
+    expectNoDuplicateInDiscard(state);
+    assertCardInvariants(state);
+  });
+
+  it('重洗场景:实体牌已回牌堆,死亡清理不把过期快照补入弃牌堆', async () => {
+    const sd = mkCard('sd1', '闪电', '♠', 'A');
+    const state = createGameState({
+      players: [mkPlayer({ index: 0, name: 'P0' }), mkPlayer({ index: 1, name: 'P1', health: 1 })],
+      cardMap: { sd1: sd },
+      zones: { deck: ['sd1'], discardPile: [], processing: [] },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.players[1].pendingTricks = [{ name: '闪电', source: 0, card: sd }];
+    await harness.setup(state);
+
+    await runDeathFlow(state, 1);
+    await harness.waitForStable();
+
+    expect(state.players[1].alive).toBe(false);
+    expect(state.players[1].pendingTricks).toEqual([]);
+    // 实体牌留在牌堆且恰好一张,过期快照不重复入弃牌堆
+    expect(state.zones.deck.filter((id) => id === 'sd1')).toHaveLength(1);
+    expect(state.zones.discardPile).not.toContain('sd1');
+    expectNoDuplicateInDiscard(state);
+    assertCardInvariants(state);
   });
 });

@@ -190,7 +190,8 @@ describe('界鬼道', () => {
       phase: '判定',
       turn: { round: 1, phase: '判定', vars: {} },
     });
-      state.zones = { deck: ['j1', 'dd1'], discardPile: [], processing: [] };
+      // 牌堆末尾 = 牌堆顶:j1(♠5)先被判定翻开,dd1 其下(界鬼道不摸牌,留在牌堆)
+    state.zones = { deck: ['dd1', 'j1'], discardPile: [], processing: [] };
       await harness.setup(state);
       const P0 = harness.player('界张角');
 

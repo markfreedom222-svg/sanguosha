@@ -1031,3 +1031,171 @@ describe('GameView:chooseOption 型主动技按钮(决堰)', () => {
     });
   });
 });
+
+// ─── 同 skillId 多 action 的技能按钮(界父魂 transform + 武圣transform)─────────
+// 回归根因:PlayerCardLarge 按 skillId 过滤出多个 action 后 flatMap 展开,
+// skillActionVariants 对 useCard/useCardAndTarget 类恒返回 label:'' →
+// key 塌缩成重复的 skillId(React duplicate key 警告),且 action 自身的 label
+// (界父魂 的 '父魂'/'武圣')被丢弃——两个按钮渲染成同名 '父魂',无法区分。
+// 修复:btns.length > 1 时把 action 的 label(或 actionType)作为变体 label
+// 纳入 key/children,保证按钮可区分、key 唯一。
+describe('GameView:同 skillId 多 action 技能按钮(界父魂)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('两个 transform 入口渲染为可区分按钮,且无重复 key 警告;各按钮接线独立', async () => {
+    const redPeach: Card = {
+      id: 'p1',
+      name: '桃',
+      suit: '♥',
+      color: '红',
+      rank: 'A',
+      type: '基本牌',
+    };
+    const view = makeView({
+      players: [
+        {
+          index: 0,
+          name: '关索',
+          character: '关索',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '界父魂'],
+          handCount: 3,
+          hand: [makeCard('k1', '杀'), redPeach, makeCard('d1', '闪')],
+          marks: [],
+          // 已获授武圣(杀/unlimited/父魂):武圣transform 入口激活
+          turnUsage: { '杀/unlimited/父魂': true },
+        },
+        makeView().players[1],
+      ],
+      cardMap: {
+        k1: makeCard('k1', '杀'),
+        p1: redPeach,
+        d1: makeCard('d1', '闪'),
+      },
+    });
+    const onAction = vi.fn();
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { container } = render(<GameViewComponent view={view} onAction={onAction} />);
+
+    try {
+      // 两个按钮:父魂(2 张牌转化)与 父魂·武圣(红色手牌转化),label 不同可区分
+      const fuhunBtn = await screen.findByRole('button', { name: '父魂' });
+      const wushengBtn = await screen.findByRole('button', { name: '父魂·武圣' });
+      expect(fuhunBtn).not.toBe(wushengBtn);
+      // 无重复 key:修复前两个按钮 key 均为 '界父魂',React 会发出 duplicate key 警告
+      const keyWarnings = errSpy.mock.calls.filter((args) =>
+        String(args[0]).match(/same key|unique "key"/),
+      );
+      expect(keyWarnings).toEqual([]);
+
+      // 接线独立:点 父魂·武圣 进入单卡红牌转化模式 → 黑牌不可选、红牌可选
+      await act(async () => {
+        fireEvent.click(wushengBtn);
+      });
+      const blackCard = container.querySelector('[data-card-id="k1"]')!;
+      await act(async () => {
+        fireEvent.click(blackCard);
+      });
+      expect(screen.queryByRole('button', { name: /使用杀/ })).toBeNull();
+      const redCard = container.querySelector('[data-card-id="p1"]')!;
+      await act(async () => {
+        fireEvent.click(redCard);
+      });
+      expect(screen.getByRole('button', { name: /使用杀/ })).toBeDefined();
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+});
+
+// ─── 多卡转化 comboFilter(乱击 两张同花色)与「使用」按钮禁用态 ────────────────
+// 回归根因:CenterActionBar 多卡转化的 canSubmit 内联为 enough && (!needsTarget ||
+// !!selectedTarget),漏 comboFilter(乱击/界乱击 两张须同花色)——异花色组合下按钮
+// 可点但 handleTransformPlay 静默 return(点了没反应)。修复:canSubmit/needsTarget
+// 以 play.transformSubmit(含 comboOk)为唯一判定源。
+describe('GameView:乱击 comboFilter 异花色组合禁用「使用」按钮', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  it('选两张异花色 → 使用按钮 disabled;换同花色 → 可提交', async () => {
+    const redPeach: Card = {
+      id: 'p1',
+      name: '桃',
+      suit: '♥',
+      color: '红',
+      rank: 'A',
+      type: '基本牌',
+    };
+    const view = makeView({
+      players: [
+        {
+          index: 0,
+          name: '袁绍',
+          character: '袁绍',
+          health: 4,
+          maxHealth: 4,
+          alive: true,
+          equipment: {},
+          skills: ['使用牌', '乱击'],
+          handCount: 3,
+          hand: [makeCard('s1', '杀'), redPeach, makeCard('d1', '闪')],
+          marks: [],
+        },
+        makeView().players[1],
+      ],
+      cardMap: {
+        s1: makeCard('s1', '杀'),
+        p1: redPeach,
+        d1: makeCard('d1', '闪'),
+      },
+    });
+    const onAction = vi.fn();
+    const { container } = render(<GameViewComponent view={view} onAction={onAction} />);
+
+    // 进入乱击转化模式(手牌存在 ♠ 对,activeWhen 满足)
+    const luanjiBtn = await screen.findByRole('button', { name: '乱击' });
+    await act(async () => {
+      fireEvent.click(luanjiBtn);
+    });
+
+    // 选中 ♠杀 + ♥桃(异花色):张数 enough 但 comboFilter 不满足 → 按钮必须 disabled
+    const cardS1 = container.querySelector('[data-card-id="s1"]')!;
+    const cardP1 = container.querySelector('[data-card-id="p1"]')!;
+    await act(async () => {
+      fireEvent.click(cardS1);
+      fireEvent.click(cardP1);
+    });
+    const useBtn = await screen.findByRole('button', { name: '使用万箭齐发' });
+    expect(useBtn).toBeDisabled();
+    // 点击禁用按钮不触发提交
+    await act(async () => {
+      fireEvent.click(useBtn);
+    });
+    expect(onAction).not.toHaveBeenCalled();
+
+    // 换成 ♠杀 + ♠闪(同花色):combo 满足 → 按钮可点并正常提交
+    await act(async () => {
+      fireEvent.click(cardP1); // 取消 ♥桃(toggle)
+      fireEvent.click(container.querySelector('[data-card-id="d1"]')!);
+    });
+    const useBtnOk = screen.getByRole('button', { name: '使用万箭齐发' });
+    expect(useBtnOk).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(useBtnOk);
+    });
+    expect(onAction).toHaveBeenCalledTimes(1);
+    const call = onAction.mock.calls[0][0];
+    expect(call.skillId).toBe('万箭齐发');
+    expect(call.actionType).toBe('use');
+    expect(call.params.cardId).toBe('s1#d1#乱击');
+    expect(call.preceding).toEqual([
+      { skillId: '乱击', actionType: 'transform', params: { cardIds: ['s1', 'd1'] } },
+    ]);
+  });
+});

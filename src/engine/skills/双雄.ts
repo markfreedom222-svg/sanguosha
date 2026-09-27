@@ -41,10 +41,12 @@ import {
 } from '../core/skill';
 import { skipPhase } from '../rules/skip-phase';
 import { defaultPlayActive } from '../rules/action-active';
+import { SHUANGXIONG_COLOR_VIEW_KEY } from '../rules/vars-keys';
 
 const CONFIRM_RT = '双雄/confirm';
 const TRIGGERED_KEY = '双雄/triggered';
-const COLOR_KEY = '双雄/color';
+/** turn.vars + view.turnUsage:拼点判定牌颜色(红/黑),供后端 transform validate + 前端 activeWhen 读 */
+const COLOR_KEY = SHUANGXIONG_COLOR_VIEW_KEY;
 
 export function createSkill(id: string, ownerId: number): Skill {
   return {

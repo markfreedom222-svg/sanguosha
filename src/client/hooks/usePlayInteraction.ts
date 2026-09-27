@@ -191,7 +191,7 @@ export interface PlayInteractionResult {
   handleCardClick: (card: Card) => void;
   handlePlayCard: () => void;
   handleTargetClick: (name: string) => void;
-  handleSkillAction: (action: SkillActionDef) => void;
+  handleSkillAction: (action: SkillActionDef, extraParams?: Record<string, Json>) => void;
   handleTransformPlay: (targetName: string) => void;
   handleRespond: (cardId?: string) => void;
   /** useCard 类回应「打出」按钮:用选中的回应牌出牌 */
@@ -579,10 +579,6 @@ export function usePlayInteraction(
     [view.players],
   );
 
-  /** 提交 selectTarget/choosePlayer 型主动技(目标名 → 座次)。
-   *  单选(max<=1)技能在点座位时即提交;多选技能走「点座位累加 + 再点按钮」。
-   *  target 与 targets 同时携带:反间/攻心/雄乱 读 targets(单选也须为长度 1 数组),
-   *  挑衅/强袭/激将 读 target。 */
   /** 变体声明的额外代价牌(如强袭·弃武器需要一张武器牌)填入 params.cardId:
    *  优先当前选中的手牌(须满足变体 cardFilter),否则自己的装备区武器。
    *  PlayerCardLarge 传入的 extraParams 可能是副本,故变体定位先按引用、再按内容。 */
@@ -607,6 +603,10 @@ export function usePlayInteraction(
     [selectedCardId, perspectiveHand, perspectiveEquipment, view.cardMap],
   );
 
+  /** 提交 selectTarget/choosePlayer 型主动技(目标名 → 座次)。
+   *  单选(max<=1)技能在点座位时即提交;当前全部 selectTarget/choosePlayer 均 max:1,单选提交。
+   *  target 与 targets 同时携带:反间/攻心/雄乱 读 targets(单选也须为长度 1 数组),
+   *  挑衅/强袭/激将 读 target。 */
   const submitSkillTarget = useCallback(
     (action: SkillActionDef, targetName: string, extra: Record<string, Json>) => {
       const idx = nameToIndex(targetName);
@@ -1067,6 +1067,9 @@ export function usePlayInteraction(
         setSelectedTarget(null);
         return;
       }
+      // 自由出牌门(与 transformSubmit/CenterActionBar「使用」按钮同源):产出牌 use action
+      // 不 active 时直接 return 不发消息——Enter 与按钮两条提交路径判定必须同源。
+      if (!(selectedActive || isRespondTransformContext)) return;
       // 目标语义由产出牌自己的 use action 决定(playRules 来自 selectedUseAction):
       // 酒(useCard,无目标)/桃(selfTarget,自动以自己为目标)/杀(攻击范围内选目标)。
       // 沿用 transform action 自己的 targetFilter 会把「对他人」的目标塞给 酒/桃 → 引擎恒拒。
@@ -1124,6 +1127,7 @@ export function usePlayInteraction(
       perspectiveHand,
       perspectiveIdx,
       playRules,
+      selectedActive,
       send,
     ],
   );
@@ -1214,6 +1218,10 @@ export function usePlayInteraction(
   //   - 弃牌/转化/distribute 窗口:多选语义,双击不接(保持 toggle,由 hover 提示仍可见)。
   const handleCardDoubleClick = useCallback(
     (card: Card) => {
+      // 与 handleCardClick 首行一致:双击出牌即退出技能选目标模式,
+      // 否则 armed 的 pendingSkillAction 残留,下一次点座位会用陈旧 variant 提交
+      // (强袭·弃武器 → 误弃武器)。
+      setPendingSkillAction(null);
       if (!canOperate || isDistributeActive) return;
       if (isDiscardPhase && isPerspectiveAwaiting) return;
       if (transformMode) return;
@@ -1541,7 +1549,10 @@ export function usePlayInteraction(
         : transformMode.targetFilter
           ? transformMode.targetFilter.max >= 1
           : true);
-    const canSubmit = enough && comboOk && (!needsTarget || !!selectedTarget);
+    // 产出牌门(与 CenterActionBar「使用」按钮同源):产出牌 use action 不 active 时
+    // 不得提交——满血时界龙胆→桃方向按钮本就不亮,Enter 热键只看 canSubmit,也不得能发。
+    const producedUsable = selectedActive || isRespondTransformContext;
+    const canSubmit = producedUsable && enough && comboOk && (!needsTarget || !!selectedTarget);
     return { needsTarget, canSubmit };
   })();
 

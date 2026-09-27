@@ -1570,6 +1570,41 @@ describe('usePlayInteraction · 转化模式(transformMode)', () => {
     expect(send2.mock.calls[0][2]).toEqual({ cardId: 'c-wine#界龙胆', targets: [0] }); // 自己
   });
 
+  // 回归:产出牌门必须折进 transformSubmit.canSubmit —— CenterActionBar「使用」按钮有
+  // (selectedActive || isRespondTransformContext) 门,Enter 热键只看 canSubmit;
+  // 漏门 = 满血时 界龙胆→桃 方向按钮不亮,但 Enter 仍能把 酒当桃 发出去(引擎必拒)。
+  it('界龙胆 酒当桃:满血时产出【桃】use action 不 active → canSubmit=false,Enter 路径不发消息', () => {
+    // 带满血限制的桃 use action(与 engine/skills/桃.ts 的 activeWhen 同源)
+    const peachWithGate: SkillActionDef = {
+      ...peachUseAction(),
+      activeWhen: (ctx) => {
+        if (!defaultPlayActive(ctx)) return false;
+        const p = ctx.view.players[ctx.perspectiveIdx];
+        return p ? p.health < p.maxHealth : false;
+      },
+    };
+    const wine = makeCard({ id: 'c-wine-fullhp', name: '酒', suit: '♠', color: '黑' });
+    const send = vi.fn();
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makePlayView(), // P0 满血 4/4
+        skillActions: [jieLongdanAction(), peachWithGate],
+        perspectiveHand: [wine],
+        send,
+      }),
+    );
+    act(() => result.current.handleSkillAction(jieLongdanAction()));
+    act(() => result.current.handleCardClick(wine));
+    expect(result.current.transformWrapperName).toBe('桃');
+    expect(result.current.selectedActive).toBe(false); // 满血 → 桃 use action 不 active
+    expect(result.current.transformSubmit?.needsTarget).toBe(false); // selfTarget 无需手选目标
+    // 产出牌门:按钮本就不亮,Enter(只看 canSubmit)也不得能发
+    expect(result.current.transformSubmit?.canSubmit).toBe(false);
+    // handleTransformPlay(按钮/Enter 共用提交口)镜像同一守卫:不发消息
+    act(() => result.current.handleTransformPlay(''));
+    expect(send).not.toHaveBeenCalled();
+  });
+
   // 回归:组合约束(comboFilter)未在提交侧生效 → 玩家能选中不同花色的两张牌提交,
   // 引擎 validate 拒「乱击需要两张同花色的手牌」(点了没反应);AI 侧同源缺口见
   // tests/headless/availableActions.test.ts「comboFilter 生效」。
@@ -1675,6 +1710,52 @@ describe('usePlayInteraction · 转化模式(transformMode)', () => {
     act(() => result.current.cancelTransform());
     expect(result.current.transformMode).toBeNull();
     expect(result.current.selectedCardId).toBeNull();
+  });
+});
+
+// ─── 回归:双击出牌必须清 pendingSkillAction ───
+// 双击手牌出牌后,已 armed 的技能选目标模式(selectTarget 技能未选目标时点击按钮进入)
+// 若不清空,下一次点座位会按陈旧 variant 提交技能(强袭·弃武器 → 误弃武器)。
+describe('usePlayInteraction · 双击出牌与技能选目标模式互斥', () => {
+  /** 强袭式 selectTarget 主动技:需选目标,无目标点击按钮后进入选目标模式 */
+  function qiangxiSelectTargetAction(ownerId = 0): SkillActionDef {
+    return {
+      skillId: '强袭',
+      ownerId,
+      actionType: 'use',
+      label: '强袭',
+      style: 'primary',
+      prompt: {
+        type: 'selectTarget',
+        title: '强袭:选择一名角色',
+        targetFilter: { min: 1, max: 1, filter: (v, i) => v.players[i]?.alive === true },
+      },
+    };
+  }
+
+  it('进入技能选目标模式后双击无目标手牌出牌 → pendingSkillAction 被清空,再点座位不提交技能', () => {
+    const send = vi.fn();
+    const { result } = renderPlay(
+      makePlayParams({
+        view: makePlayView(),
+        skillActions: [qiangxiSelectTargetAction(), trickNoTargetAction()],
+        perspectiveHand: [TRICK_CARD],
+        send,
+      }),
+    );
+    // 点技能按钮(未选目标)→ 进入选目标模式(pendingSkillAction armed)
+    act(() => result.current.handleSkillAction(qiangxiSelectTargetAction()));
+    expect(result.current.skillTargetMode).toBe(true);
+    // 双击无中生有:无目标牌直接出牌
+    act(() => result.current.handleCardDoubleClick(TRICK_CARD));
+    expect(sentCalls(send)).toEqual([
+      { skillId: '无中生有', actionType: 'use', params: { cardId: 'c-trick' } },
+    ]);
+    // 选目标模式已被双击路径清空(与 handleCardClick 首行同款清理)
+    expect(result.current.skillTargetMode).toBe(false);
+    // 再点座位:不得用残留的 pendingSkillAction 提交 强袭
+    act(() => result.current.handleTargetClick('P1'));
+    expect(send.mock.calls.some((c) => c[0] === '强袭')).toBe(false);
   });
 });
 

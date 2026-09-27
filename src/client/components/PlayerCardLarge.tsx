@@ -253,8 +253,15 @@ export function PlayerCardLargeImpl({
             const display = displaySkillName(s);
             // 变体展开:selectTarget + paramVariants(强袭代价)每个变体一个按钮,
             // 点击时把变体 params 一并提交;无变体时退化为单个按钮(label 为空)。
+            // 同 skillId 多 action(界父魂 transform+武圣transform、界矫诏/界渐营 每个声明名
+            // 一个 action)时,变体自身无 label 的(useCard/useCardAndTarget 类恒空)用
+            // action 自己的 label(或 actionType)作变体名,保证按钮可区分、key 唯一。
             const variants = btns.flatMap((a) =>
-              skillActionVariants(a).map((v) => ({ action: a, ...v })),
+              skillActionVariants(a).map((v) => ({
+                ...v,
+                action: a,
+                label: v.label || (btns.length > 1 ? a.label || a.actionType : ''),
+              })),
             );
             const activeVariants = variants.filter((v) => isSkillActive(v.action));
             if (activeVariants.length > 0) {
@@ -267,7 +274,12 @@ export function PlayerCardLargeImpl({
                   className={cx(styles.skillBtn, skillBtnVariant(v.action.style))}
                   onClick={() => onSkillAction(v.action, v.params)}
                 >
-                  {v.label ? `${display}·${v.label}` : undefined}
+                  {v.label
+                    ? // label 已含展示名前缀(界矫诏 '矫诏·杀')时不重复拼接
+                      v.label.startsWith(display)
+                      ? v.label
+                      : `${display}·${v.label}`
+                    : undefined}
                 </SkillTag>
               ));
             }

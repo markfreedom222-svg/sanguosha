@@ -17,8 +17,8 @@
 //   - 一次失去事件触发一次判定(不按卡牌数量重复)
 //   - 判定结果在「判定牌生效后」hook 中捕获花色(判定牌在 frameCards 末尾,
 //     在 runJudgeFlow 收尾把它移入弃牌堆之前)
-//   - 非红桃时:把判定牌从 frame.cards 拿出(直接 mutate——无 atom 支持"置于武将牌上"),
-//     再加田标记。runJudgeFlow 收尾 splice 末尾时,frame 已空,no-op。
+//   - 非红桃时:经「收取判定牌」atom 把判定牌收作"田"(移出处理区、记入 marks,视图同步
+//     投影),再加田标记。runJudgeFlow 收尾按 id 找不到该牌即为 no-op。
 import type {
   AtomAfterContext,
   FrontendAPI,
@@ -85,7 +85,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
   );
 
   // ── 判定牌生效后 hook:在 runJudgeFlow 收尾(将判定牌移入弃牌堆)之前运行 ──
-  //   捕获花色,非红桃时把判定牌从 frame.cards 拿出(作为田)+ 加标记 + 更新距离修正
+  //   捕获花色,非红桃时经「收取判定牌」atom 收走判定牌(作为田)+ 加标记 + 更新距离修正
   registerAfterHook(state, skill.id, ownerId, '判定牌生效后', async (ctx) => {
     const atom = ctx.atom;
     if (atom.player !== ownerId) return;
@@ -103,7 +103,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
     ctx.state.localVars[JUDGE_SUIT_KEY] = judgeCard.suit;
     ctx.state.localVars[JUDGE_CARD_KEY] = judgeCardId;
 
-    // 红桃:不拿(让 判定.afterHooks 把判定牌正常移入弃牌堆)
+    // 红桃:不拿(让 runJudgeFlow 收尾的 cleanupJudgeCard 把判定牌正常移入弃牌堆)
     if (judgeCard.suit === '♥') return;
 
     // 非红桃:把判定牌收作"田"(防止 runJudgeFlow 收尾把它移入弃牌堆)。
@@ -132,7 +132,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
   });
 
   // ── 通用触发:回合外失去牌时,询问发动 + 判定 ──
-  //   判定后的拿牌/加田在「判定」after hook 内完成(此时判定牌仍在 frame.cards)
+  //   判定后的拿牌/加田在「判定牌生效后」时机钩子内完成(此时判定牌仍在 frame.cards)
   async function maybeTriggerTunTian(ctx: AtomAfterContext, lossAtomType: string): Promise<void> {
     // 必须非自己回合
     if (ctx.state.currentPlayerIndex === ownerId) return;

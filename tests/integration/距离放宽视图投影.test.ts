@@ -175,3 +175,73 @@ describe('距离 / 攻击范围放宽必须投影到 view', () => {
     expectDistanceViewAgreesWithEngine(state, 0, 2);
   });
 });
+
+// ─── 挑衅/界挑衅:目标过滤必须是 inAttackRange(目标→姜维) 的投影 ───
+// 挑衅目标语义:**目标**的杀能攻击到姜维(方向 目标→姜维,不是 姜维→目标)。
+// 客户端 targetFilter 的旧实现是占位 `return true` → 枚举出打不到姜维的角色
+// (4 人局座次 2 距离 2 > 徒手范围 1),玩家点了没反应 / AI 反复撞同一非法目标空转。
+// 该修复此前零回归覆盖(改回占位整套测试不红),在此钉死「过滤结果 == 引擎判定」。
+describe('挑衅目标过滤与引擎攻击范围一致', () => {
+  let harness: SkillTestHarness;
+
+  beforeEach(() => {
+    harness = new SkillTestHarness();
+  });
+
+  it.each(['挑衅', '界挑衅'])(
+    '%s:超出目标攻击范围的座次不得被选为目标(过滤与 inAttackRange 逐一一致)',
+    async (skillId) => {
+      const state = createGameState({
+        players: [
+          mkPlayer({ index: 0, name: 'P0', skills: ['回合管理', skillId] }),
+          mkPlayer({ index: 1, name: 'P1' }),
+          // 座次 2 距离 2,徒手范围 1:其杀打不到 P0 → 不可被挑衅
+          mkPlayer({ index: 2, name: 'P2' }),
+          mkPlayer({ index: 3, name: 'P3' }),
+        ],
+        cardMap: {},
+        currentPlayerIndex: 0,
+        phase: '出牌',
+        turn: { round: 1, phase: '出牌', vars: {} },
+      });
+      await harness.setup(state);
+
+      // 引擎侧基准(方向:目标 → 姜维):邻座(1/3)能打到我,对座(2)打不到
+      expect(inAttackRange(state, 1, 0)).toBe(true);
+      expect(inAttackRange(state, 2, 0)).toBe(false);
+      expect(inAttackRange(state, 3, 0)).toBe(true);
+      // view 侧与引擎一致(同向使用:from=目标,to=姜维)
+      for (const t of [1, 2, 3]) expectDistanceViewAgreesWithEngine(state, t, 0);
+
+      // 客户端 targetFilter(挑衅 use 的 selectTarget prompt,与浏览器选目标 UI 同源)
+      const session = harness.player('P0');
+      const useAction = session
+        .availableActions()
+        .find((a) => a.skillId === skillId && a.actionType === 'use');
+      expect(useAction, `${skillId}:use 应已注册到前端`).toBeDefined();
+      const prompt = useAction!.prompt;
+      expect(prompt.type).toBe('selectTarget');
+      const filter = prompt.type === 'selectTarget' ? prompt.targetFilter?.filter : undefined;
+      expect(filter, `${skillId}:use 应声明 targetFilter.filter`).toBeDefined();
+      const view = session.view;
+      expect([1, 2, 3].filter((t) => filter!(view, t))).toEqual([1, 3]); // 座次 2 不出现
+
+      // 过滤结果与引擎判定逐一一致(占位 `return true` 会把座次 2 也放进来)
+      for (const t of [1, 2, 3]) {
+        expect(filter!(view, t), `座次 ${t} 的过滤结果应与引擎 inAttackRange 一致`).toBe(
+          inAttackRange(state, t, 0),
+        );
+      }
+
+      // 引擎权威印证:被过滤的座次 2 提交必拒,枚举出的座次 1 可提交
+      expect(
+        await session.tryDispatch({ skillId, actionType: 'use', params: { target: 2 } }),
+        '座次 2 打不到姜维,引擎应拒',
+      ).toBe(false);
+      expect(
+        await session.tryDispatch({ skillId, actionType: 'use', params: { target: 1 } }),
+        '座次 1 打得到姜维,引擎应接受',
+      ).toBe(true);
+    },
+  );
+});

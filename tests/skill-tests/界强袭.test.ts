@@ -344,12 +344,14 @@ describe('界强袭', () => {
       expect(actions.length).toBeGreaterThan(0);
       const costs = actions.map((a) => a.message.params.cost);
       expect(costs).toContain('discard');
+      expect(costs).toContain('damage');
 
       for (const a of actions) {
         // 每个变体在全新 state 上提交(界强袭每阶段限两次 + 目标去重)
         const { state, view: freshView } = await variantActions();
         const params = { ...a.message.params } as Record<string, unknown>;
-        if (params.cost === 'discard') params.cardId = 'w1'; // 变体标签:需补武器 cardId
+        if (params.cost === 'discard')
+          expect(typeof params.cardId, '枚举出的弃武器变体必须自带 cardId').toBe('string');
         const target = (a.validTargets[0] ?? 1) as number;
         const res = await dispatch(state, {
           ...a.message,

@@ -131,6 +131,27 @@ describe('蛊惑/界蛊惑:声明编码进 actionType,客户端枚举出的 acti
       expect(result.accepted, '客户端枚举的 use:桃 必须被引擎接受').toBe(true);
     });
 
+    it(`${skill}:于吉满血+他人受伤 → use:桃 不被枚举`, async () => {
+      const { actions } = await enumerateFor({
+        skill,
+        players: [
+          // 于吉满血;桃的 prompt 是 selfTarget(目标锁自己),引擎 validate 拒满血目标
+          // → 他人受伤不构成入口,枚举出即「客户端发得出、引擎必拒」
+          mkPlayer({ index: 0, name: '于吉', hand: ['c1'], skills: [skill, '回合管理'] }),
+          mkPlayer({ index: 1, name: 'P1', hand: ['c2'], skills: [], health: 2 }),
+        ],
+        cardMap: { ...CARDS },
+        seat: 0,
+      });
+      expect(
+        actions.some((a) => a.message.actionType === 'use:桃'),
+        '满血于吉不应枚举出「声明桃」入口',
+      ).toBe(false);
+      // 其他声明入口不受影响(杀有目标可选、酒无目标)
+      expect(actions.some((a) => a.message.actionType === 'use:杀')).toBe(true);
+      expect(actions.some((a) => a.message.actionType === 'use:酒')).toBe(true);
+    });
+
     it(`${skill}:枚举出 use:酒(声明酒,无目标)→ 被接受`, async () => {
       const { state, actions } = await enumerateFor({
         skill,
@@ -157,7 +178,7 @@ describe('蛊惑/界蛊惑:声明编码进 actionType,客户端枚举出的 acti
       const { state, actions } = await enumerateFor({
         skill,
         players: [
-          // 于吉已受伤:声明【桃】的 activeWhen 要求场上存在受伤角色(否则不出按钮)
+          // 于吉已受伤:声明【桃】的 activeWhen 要求自己受伤(否则不出按钮)
           mkPlayer({ index: 0, name: '于吉', hand: ['c1'], skills: [skill, '回合管理'], health: 2 }),
           mkPlayer({ index: 1, name: 'P1', hand: ['c2'], skills: [] }),
         ],

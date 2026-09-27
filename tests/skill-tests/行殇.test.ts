@@ -172,6 +172,47 @@ describe('行殇', () => {
     expect(harness.state.players[1].pendingTricks).toEqual([]);
   });
 
+  // ─── 端到端:判定区延时锦囊实体牌已在弃牌堆(真实对局常态) ────────────────────
+  it('发动行殇:判定区延时锦囊实体牌从弃牌堆移入发动者手牌(不复制)', async () => {
+    const trickCard = makeCard('t2', '乐不思蜀', '♠', 'A', '锦囊牌');
+    const hand = makeCard('h2', '杀', '♠', '7');
+    const state: GameState = createGameState({
+      players: [
+        makePlayer({ index: 0, name: 'P0', skills: ['行殇'] }),
+        makePlayer({
+          index: 1,
+          name: 'P1',
+          hand: ['h2'],
+          pendingTricks: [{ name: '乐不思蜀', source: 0, card: trickCard }],
+          health: 1,
+          maxHealth: 4,
+        }),
+      ],
+      cardMap: { t2: trickCard, h2: hand },
+      // 实体牌在使用乐不思蜀时已入弃牌堆,判定区只剩快照
+      zones: { deck: [], discardPile: ['t2'], processing: [] },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    await harness.setup(state);
+    const P0 = harness.player('P0');
+
+    void runDeathFlow(harness.state, 1);
+    await harness.waitForStable();
+    P0.expectPending('请求回应');
+    await P0.respond('行殇', { choice: true });
+
+    // 判定区牌(实体在弃牌堆)随行殇移入 P0 手牌:恰好一张,不复制
+    expect(harness.state.players[0].hand.filter((id) => id === 't2')).toHaveLength(1);
+    expect(harness.state.players[0].hand).toEqual(expect.arrayContaining(['h2', 't2']));
+    expect(harness.state.players[0].hand.length).toBe(2);
+    // P1 判定区清空;实体牌离开弃牌堆(移动而非复制)
+    expect(harness.state.players[1].pendingTricks).toEqual([]);
+    expect(harness.state.zones.discardPile).not.toContain('t2');
+    expect(harness.state.zones.discardPile.filter((id) => id === 't2')).toHaveLength(0);
+  });
+
   // ─── 不发动:可以选择不拿牌 ────────────────────
   it('不发动行殇:P0 不获得 P1 的牌(牌进入弃牌堆)', async () => {
     const c1 = makeCard('c1', '杀', '♠', '7');

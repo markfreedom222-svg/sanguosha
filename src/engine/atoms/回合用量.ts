@@ -37,7 +37,13 @@ export const 回合用量: AtomDefinition<{ player: number; key: string; value: 
     // 回合结束随 turn.vars 自动清空;同一键可反复更新(如 往烈/首张可用 true→false)。
     const mirrorable =
       atom.key.startsWith('杀/') || TURN_SCOPED_VIEW_KEYS.includes(atom.key);
-    if (mirrorable) {
+    // 镜像只属于当前回合玩家:buildView 把 __view/* 统一投影给 state.currentPlayerIndex
+    // (键不含玩家维度)。若非当前回合玩家写入(如 界鞬出 在别人回合被 借刀杀人/挑衅
+    // 逼杀时以 player: ownerId 写 '杀/extra/界鞬出'),这条镜像会被 buildView 永远归错人
+    // ——重建视图把 +1 记到当前回合玩家头上,重连后 viewSlashMax ≠ 引擎 slashMax,
+    // 客户端枚举的第 2 张杀必被引擎拒。故非当前玩家的写入不落镜像(在线增量投影按
+    // event.player 归属正确玩家,不受此守卫影响)。
+    if (mirrorable && atom.player === state.currentPlayerIndex) {
       state.turn.vars[VIEW_MIRROR_PREFIX + atom.key] = atom.value;
     }
   },

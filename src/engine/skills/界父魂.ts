@@ -13,7 +13,7 @@
 // 实现:
 //   A. 转化 action(2 牌 → 杀):preceding=[界父魂.transform] + 主 action=杀.use
 //      类似丈八蛇矛多卡转化,但允许装备区牌(参考界武圣卸装备模式)。
-//      影子 id = ${id1}#${id2}#父魂,多卡转化 shadowOf=undefined,颜色取综合。
+//      影子 id = ${id1}#${id2}#界父魂(后缀 = 技能 id,客户端按同一约定构造),多卡转化 shadowOf=undefined,颜色取综合。
 //
 //   B. 颜色限制:转化杀的目标只能用同色手牌响应
 //      before-hook on 询问闪:检测当前结算帧的 杀 是 ownerId 的转化杀
@@ -65,7 +65,7 @@ export function createSkill(id: string, ownerId: number): Skill {
 
 // ─── A. 父魂 转化 action:2 张牌(手牌或装备区)→ 杀 ─────────────
 
-/** 父魂 影子卡 id:${id1}#${id2}#父魂 */
+/** 界父魂 影子卡 id:${id1}#${id2}#界父魂(后缀 = 技能 id,与客户端构造约定一致) */
 function shadowIdOf(id1: string, id2: string): string {
   return `${id1}#${id2}#界父魂`;
 }

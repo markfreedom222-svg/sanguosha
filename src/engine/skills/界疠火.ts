@@ -10,7 +10,7 @@
 // 实现:
 //   ① transform action(preceding,主 action=杀.use 之前执行):
 //      校验 owner 手中的杀 damageType !== '火焰'(即非火杀,含普通/雷杀);
-//      创建影子卡 `${cardId}#疠火`,name='杀',damageType='火焰',继承花色/点数/颜色,shadowOf 指向原卡。
+//      创建影子卡 `${cardId}#界疠火`(后缀 = 技能 id,与客户端构造约定一致),name='杀',damageType='火焰',继承花色/点数/颜色,shadowOf 指向原卡。
 //      标记 `localVars['疠火/converted:${shadowId}']` = true 供后续 hook 识别。
 //   ② 造成伤害 after-hook:
 //      若 atom.source===owner + atom.cardId 是疠火转化影子 + amount>0 →

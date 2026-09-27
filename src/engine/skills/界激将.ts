@@ -37,7 +37,7 @@ import {
   declareAlternativeResponse,
 } from '../core/skill';
 import { inAttackRange } from '../rules/distance';
-import { isLordOwner } from '../rules/action-active';
+import { defaultPlayActive, isLordOwner } from '../rules/action-active';
 import type { SkillModule } from '../types';
 
 // localVars keys(界激将新增被动触发)
@@ -431,9 +431,12 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       filter: (view: GameView, t: number) =>
         t !== skill.ownerId && view.players[t]?.alive === true && view.players[t]?.faction === '蜀',
     },
-    // 主公技门槛(与后端 validate 的 ownerId===0 同源):刘备非主公时不得激活,
-    // 否则无头/AI 客户端枚举出该 action,提交恒拒「仅主公可用」。
-    activeWhen: () => isLordOwner(skill.ownerId),
+    // 门槛与后端 validate 同源(isActiveAction 是 replace 语义,activeWhen 必须整体
+    // 重述默认出牌门槛,不能只判主公位):
+    //   defaultPlayActive = 自己回合 + 出牌阶段 + 无阻塞 pending(validate 的 myTurn/inActPhase/free)
+    //   isLordOwner      = 主公位 ownerId===0(validate 的主公技门槛)
+    // 只判主公位会放行别人回合/阻塞询问中的枚举 → 提交恒拒「仅主公可用」。
+    activeWhen: (ctx) => defaultPlayActive(ctx) && isLordOwner(skill.ownerId),
   });
   // respond:响应型激将(被询问杀时激活) / 主动型(蜀角色被请求出杀) / 被动型(是否令主公摸牌)
   api.defineAction('respond', {

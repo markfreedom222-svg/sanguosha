@@ -38,13 +38,13 @@ import { applyAtom } from '../core/apply';
 import { registerAction, registerAfterHook, registerBeforeHook } from '../core/skill';
 import { runPickTargetCardPanel } from '../flows/pick-card-panel';
 import type { SkillModule } from '../types';
-import { PICK_RESULT_KEY } from '../rules/vars-keys';
+import { PICK_RESULT_KEY, JUZHAN_STATE_VIEW_KEY } from '../rules/vars-keys';
 
 const SKILL_ID = '拒战';
 /** 转换态 state key(跨回合持久,无 /usedThisTurn 后缀)。 */
 const STATE_KEY = '拒战/态';
-/** 转换态 view 同步 key(经 回合用量 atom 投影 turnUsage)。 */
-const STATE_VIEW_KEY = '拒战/态';
+/** 转换态 view 同步 key(经 回合用量 atom 投影 turnUsage;注册进 TURN_SCOPED_VIEW_KEYS 供重连重建)。 */
+const STATE_VIEW_KEY = JUZHAN_STATE_VIEW_KEY;
 /** turn.vars key:本回合禁制对(随「回合结束」atom 自动清空)。 */
 const FORBIDDEN_VAR = '拒战/禁对';
 

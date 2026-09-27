@@ -7,6 +7,7 @@ import { SkillTestHarness, dispatchAndWait } from '../engine-harness';
 import '../../src/engine/atoms';
 import { buildView } from '../../src/engine/index';
 import { createGameState } from '../../src/engine/types';
+import { defaultPlayActive } from '../../src/engine/rules/action-active';
 import type { GameView, Card } from '../../src/engine/types';
 import type { SkillActionDef } from '../../src/client/skillActionRegistry';
 
@@ -267,6 +268,41 @@ const luanjiTransformAction: SkillActionDef = {
 // 梅花牌(连环/界连环转化原料)
 const clubCard: Card = { id: 'c4', name: '杀', suit: '♣', color: '黑', rank: '5', type: '基本牌' };
 
+// 桃的 use action:镜像 engine/skills/cards/桃.ts(selfTarget + 满血时 activeWhen 阻止出牌)。
+const peachUseAction: SkillActionDef = {
+  skillId: '桃',
+  ownerId: 0,
+  actionType: 'use',
+  label: '桃',
+  prompt: {
+    type: 'useCardAndTarget',
+    title: '出桃',
+    cardFilter: { filter: (c: Card) => c.name === '桃', min: 1, max: 1 },
+    targetFilter: { min: 1, max: 1 },
+    selfTarget: true,
+  },
+  activeWhen: (ctx) => {
+    if (!defaultPlayActive(ctx)) return false;
+    const p = ctx.view.players[ctx.perspectiveIdx];
+    return p ? p.health < p.maxHealth : false;
+  },
+};
+
+// 测试用多卡转化技:两张手牌当【桃】使用(prompt 形态镜像 丈八蛇矛,产出改为 桃)。
+const dualPeachTransformAction: SkillActionDef = {
+  skillId: '双桃',
+  ownerId: 0,
+  actionType: 'transform',
+  label: '双桃',
+  prompt: {
+    type: 'useCardAndTarget',
+    title: '选择 2 张手牌当桃使用',
+    cardFilter: { filter: () => true, min: 2, max: 2 },
+    targetFilter: { min: 1, max: 1 },
+  },
+  transform: (card: Card) => ({ name: '桃', sourceCardId: card.id, fromSkill: '双桃' }),
+};
+
 // 连环的 transform action:梅花牌当铁索连环。镜像 engine/skills/连环.ts onMount。
 const lianhuanTransformAction: SkillActionDef = {
   skillId: '连环',
@@ -496,6 +532,39 @@ describe('enumerateAvailableActions', () => {
       (x) => x.category === 'transform',
     );
     expect(tf).toHaveLength(1);
+  });
+
+  // 回归:多卡转化的产出牌门(与单卡分支对称)。产出牌的 use action 未激活时
+  // (桃 需自己已受伤,满血 activeWhen=false)不枚举必拒动作——旧实现多卡分支
+  // 既不查 hasUseEntry/产出牌激活状态,目标语义还沿用 transform 自身的 targetFilter。
+  it('多卡转化产出不可用牌(满血时的桃) → 不枚举', () => {
+    const view = makeView(0, '出牌', [redCard, redCard2]); // health 4/4 满血
+    const actions = enumerateAvailableActions(view, 0, [
+      dualPeachTransformAction,
+      peachUseAction,
+    ]);
+    expect(actions.filter((x) => x.category === 'transform')).toHaveLength(0);
+  });
+
+  it('多卡转化产出可用牌(受伤时的桃) → 枚举,目标语义取产出牌(selfTarget 预填自己)', () => {
+    const view = makeView(0, '出牌', [redCard, redCard2]);
+    view.players[0].health = 3; // 已受伤 → 桃的 use action 激活
+    const actions = enumerateAvailableActions(view, 0, [
+      dualPeachTransformAction,
+      peachUseAction,
+    ]);
+    const tf = actions.filter((x) => x.category === 'transform');
+    expect(tf).toHaveLength(1);
+    const a = tf[0];
+    // 主 action = 桃.use,目标语义来自产出牌(selfTarget),而非 transform 的「其他角色」
+    expect(a.message.skillId).toBe('桃');
+    expect(a.message.actionType).toBe('use');
+    expect(a.message.params.cardId).toBe('c2#c3#双桃');
+    expect(a.message.params.targets).toEqual([0]); // selfTarget 预填 targets=[自己]
+    expect(a.validTargets).toEqual([0]);
+    expect(a.message.preceding).toEqual([
+      { skillId: '双桃', actionType: 'transform', params: { cardIds: ['c2', 'c3'] } },
+    ]);
   });
 
   // 回归:连环/界连环转化铁索连环。transform action 缺 transform 字段时,
@@ -1339,6 +1408,44 @@ const jueyanUseAction: SkillActionDef = {
   },
 };
 
+// choosePlayer 多选(min=2,镜像「奋威·选至多两名目标」一类):min>1 时逐候选
+// 单目标展开每个只带 1 个目标 → 引擎 validate 必拒「目标数不足」。
+const multiChoosePlayerUseAction: SkillActionDef = {
+  skillId: '双选',
+  ownerId: 0,
+  actionType: 'use',
+  label: '双选',
+  prompt: {
+    type: 'choosePlayer',
+    title: '双选:选择两名角色',
+    min: 2,
+    max: 2,
+    candidates: [1, 2],
+  },
+};
+
+// selectTarget min=2 + paramVariants(代价二选一,其一需弃武器牌):组合了多选与
+// 变体——描述性多选 action 必须携带 cost/cardId,否则提交缺参被引擎恒拒。
+const dualTargetVariantUseAction: SkillActionDef = {
+  skillId: '双目标',
+  ownerId: 0,
+  actionType: 'use',
+  label: '双目标',
+  prompt: {
+    type: 'selectTarget',
+    title: '双目标:选择两名其他角色(代价二选一)',
+    targetFilter: { min: 2, max: 2, filter: (_view: GameView, t: number) => t !== 0 },
+    paramVariants: [
+      { label: '失去1点体力', params: { cost: 'hp' } },
+      {
+        label: '弃一张武器牌',
+        params: { cost: 'discard' },
+        cardFilter: (c: Card) => c.type === '装备牌',
+      },
+    ],
+  },
+};
+
 describe('enumerateAvailableActions:非 useCard 型主动技', () => {
   it('confirm 型(苦肉) → 生成 use action,params 为空(与前端 handleSkillAction 一致)', () => {
     const actions = enumerateAvailableActions(makeView(0, '出牌', []), 0, [kurouUseAction]);
@@ -1383,6 +1490,58 @@ describe('enumerateAvailableActions:非 useCard 型主动技', () => {
     const picked = actions.filter((a) => a.message.skillId === '激将');
     expect(picked).toHaveLength(1);
     expect(picked[0].message.params.target).toBe(1);
+  });
+
+  // 回归:choosePlayer 且 prompt.min>1 时镜像 selectTarget 的描述性多选分支——
+  // 旧实现无条件逐候选一个单目标 action(params:{target,targets:[t]}),
+  // 引擎 validate 按 min>1 判「目标数不足」恒拒。
+  it('choosePlayer 型 min>1 → 描述性多选 action(validTargets 全集 + minTarget),不再单目标展开', () => {
+    const actions = enumerateAvailableActions(makeView3(0, '出牌', []), 0, [
+      multiChoosePlayerUseAction,
+    ]);
+    const picked = actions.filter((a) => a.message.skillId === '双选');
+    expect(picked).toHaveLength(1);
+    const a = picked[0];
+    expect(a.message.params).toEqual({ targets: [] }); // targets 由 agent 从 validTargets 选
+    expect(a.validTargets).toEqual([1, 2]);
+    expect(a.minTarget).toBe(2);
+    expect(a.maxTarget).toBe(2);
+    // 单目标展开(params.target)不再出现
+    expect(
+      actions.some((x) => x.message.skillId === '双选' && x.message.params.target !== undefined),
+    ).toBe(false);
+  });
+
+  // 回归:selectTarget min>1 的描述性分支此前提前 return,跳过 paramVariants 展开
+  // → 组合了多选与代价变体的技能丢必填 cost/cardId,提交恒被 validate 拒。
+  it('selectTarget min>1 + paramVariants → 描述性多选 action 仍携带 cost/cardId', () => {
+    const weaponCard: Card = {
+      id: 'w1',
+      name: '诸葛连弩',
+      suit: '♣',
+      color: '黑',
+      rank: '1',
+      type: '装备牌',
+    };
+    const view = makeView3(0, '出牌', [weaponCard]);
+    const actions = enumerateAvailableActions(view, 0, [dualTargetVariantUseAction]);
+    const picked = actions.filter((a) => a.message.skillId === '双目标');
+    // 2 个变体:失去体力(无代价牌) + 弃武器(手中 1 张装备牌)
+    expect(picked).toHaveLength(2);
+    const byCost = Object.fromEntries(
+      picked.map((a) => [a.message.params.cost as string, a]),
+    ) as Record<string, (typeof picked)[number]>;
+    expect(byCost.hp.message.params).toEqual({ targets: [], cost: 'hp' });
+    expect(byCost.discard.message.params).toEqual({
+      targets: [],
+      cost: 'discard',
+      cardId: 'w1',
+    });
+    for (const a of picked) {
+      expect(a.validTargets).toEqual([1, 2]);
+      expect(a.minTarget).toBe(2);
+      expect(a.maxTarget).toBe(2);
+    }
   });
 
   it('chooseOption 型(决堰) → 每个选项一个 action(params.option)', () => {

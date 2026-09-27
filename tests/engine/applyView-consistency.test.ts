@@ -149,15 +149,17 @@ describe('applyView 一致性 bug', () => {
   });
 
   describe('判定 atom: 判定牌去向由后续 atom 投影', () => {
-    it('apply 从 deck shift 到 processing, applyView 不减 deckCount', () => {
+    it('apply 从 deck 末尾(=牌堆顶)pop 到 processing, applyView 减 deckCount', () => {
       const def = getAtomDef('判定');
       const view = mockView();
 
       const before = view.zones!.deckCount;
       def.applyView!(view, {} as any);
 
-      // processing 被 pop（afterHook 模拟），但 deckCount 应该 -1（牌从牌堆翻出）
-      expect(view.zones!.deckCount).toBe(before - 1); // ❌ BUG: 实际仍为 10
+      // 牌从 deck 末尾(=顶)翻出到处理区 → deckCount -1。
+      // 判定牌的最终去向(入弃牌堆/被技能收走)由后续 atom(移动牌/收取判定牌)投影,
+      // applyView 不预支。
+      expect(view.zones!.deckCount).toBe(before - 1);
     });
 
     it('applyView 与 apply 对称: deckCount-1 + 判定牌进处理区,不预支 discardPileCount', () => {

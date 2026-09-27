@@ -54,6 +54,7 @@ import {
   hasBlockingPending,
 } from '../core/skill';
 import { defaultPlayActive } from '../rules/action-active';
+import { JIESHUANGXIONG_COLOR_VIEW_KEY } from '../rules/vars-keys';
 import type { SkillModule } from '../types';
 
 const _SKILL_ID = '界双雄';
@@ -66,7 +67,7 @@ const ACTIVATE_KEY = '界双雄/activate';
 /** localVars key:玩家选择弃置的手牌 cardId */
 const DISCARD_KEY = '界双雄/discardCard';
 /** turn.vars key:弃置牌的颜色(红/黑),供后端 transform validate + 前端 activeWhen 读 */
-const COLOR_KEY = '界双雄/color';
+const COLOR_KEY = JIESHUANGXIONG_COLOR_VIEW_KEY;
 /** turn.vars key:本回合对界颜良文丑造成伤害的牌 cardId 数组 */
 const DAMAGE_KEY = '界双雄/damageCards';
 

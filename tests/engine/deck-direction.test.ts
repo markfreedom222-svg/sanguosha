@@ -113,4 +113,45 @@ describe('牌堆方向:末尾 = 牌堆顶', () => {
     expect(judged).toBe('top');
     expect(state.cardMap['top'].suit).toBe('♥');
   });
+
+  it('五谷丰登 亮出的是牌堆顶(deck 末尾逐张翻出),reveal 顺序 = 先顶后次顶', async () => {
+    const bottom = makeCard('bottom', '杀', '♠', '2');
+    const inner = makeCard('inner', '桃', '♥', '3');
+    const top2 = makeCard('top2', '酒', '♣', '5');
+    const top1 = makeCard('top1', '闪', '♦', '7');
+    const wugu = makeCard('wg1', '五谷丰登', '♥', '9', '锦囊牌');
+    const state = createGameState({
+      players: [
+        makePlayer({ index: 0, name: 'P1', hand: ['wg1'], skills: ['五谷丰登'] }),
+        makePlayer({ index: 1, name: 'P2', skills: ['五谷丰登'] }),
+      ],
+      cardMap: { bottom, inner, top2, top1, wg1: wugu },
+      currentPlayerIndex: 0,
+      phase: '出牌',
+      turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    state.zones = { deck: ['bottom', 'inner', 'top2', 'top1'], discardPile: [], processing: [] };
+    await harness.setup(state);
+
+    const P1 = harness.player('P1');
+    const P2 = harness.player('P2');
+
+    await P1.useCard('五谷丰登', 'wg1');
+    // 选牌前的无懈可击广播 → pass(没人打)
+    await P1.pass();
+
+    // 两名存活角色 → 亮 2 张;reveal 顺序 = 从 deck 末尾逐张:先 top1(顶),再 top2
+    expect(harness.state.localVars['五谷丰登/亮牌']).toEqual(['top1', 'top2']);
+    expect(harness.state.zones.deck).toEqual(['bottom', 'inner']);
+
+    await P1.respond('五谷丰登', { cardId: 'top1' });
+    await P1.pass();
+    await P2.respond('五谷丰登', { cardId: 'top2' });
+    await harness.waitForStable();
+
+    // 亮出的两张牌各被选走;牌堆底部的 bottom/inner 不受影响
+    expect(harness.state.players[0].hand).toContain('top1');
+    expect(harness.state.players[1].hand).toContain('top2');
+    expect(harness.state.zones.deck).toEqual(['bottom', 'inner']);
+  });
 });

@@ -21,7 +21,7 @@ import { popFrame, pushFrame, frameCards } from '../core/frame';
 import { runUseFlow } from './cards/use-card';
 import { registerAction, hasBlockingPending, declareAlternativeResponse } from '../core/skill';
 import { inAttackRange } from '../rules/distance';
-import { isLordOwner } from '../rules/action-active';
+import { defaultPlayActive, isLordOwner } from '../rules/action-active';
 
 // use(代使用)路径的 localVars 键 / requestType 常量(对齐 乱武/借刀杀人 风格)
 const REQUEST_TYPE = '激将/出杀';
@@ -260,9 +260,12 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       filter: (view: GameView, t: number) =>
         t !== skill.ownerId && view.players[t]?.alive === true && view.players[t]?.faction === '蜀',
     },
-    // 主公技门槛(与后端 validate 的 ownerId===0 同源):刘备非主公时不得激活——
-    // 否则无头/AI 客户端枚举出该 action,提交恒拒「现在不能使用激将」。
-    activeWhen: () => isLordOwner(skill.ownerId),
+    // 门槛与后端 validate 同源(isActiveAction 是 replace 语义,activeWhen 必须整体
+    // 重述默认出牌门槛,不能只判主公位):
+    //   defaultPlayActive = 自己回合 + 出牌阶段 + 无阻塞 pending(validate 的 myTurn/inActPhase/free)
+    //   isLordOwner      = 主公位 ownerId===0(validate 的主公技门槛)
+    // 只判主公位会放行别人回合/阻塞询问中的枚举 → 提交恒拒「现在不能使用激将」。
+    activeWhen: (ctx) => defaultPlayActive(ctx) && isLordOwner(skill.ownerId),
   });
   // respond:响应型激将(被询问杀时激活)
   api.defineAction('respond', {
@@ -283,7 +286,9 @@ export function onMount(skill: Skill, api: FrontendAPI): (() => void) | void {
       if (atom.type === '询问杀') return true;
       // 主动型(代使用):蜀角色被请求 激将/出杀
       if (atom.requestType === REQUEST_TYPE) return true;
-      // 势力检查由后端 validate 处理(GameView 不暴露 faction)
+      // 其余 pending 不是激将询问,不激活。分支专属校验由引擎 validate 权威判定:
+      // 询问杀 分支查主公位与在场蜀势力,激将/出杀 只发给蜀角色(派发时已过滤),
+      // view 层不重复 faction 判断以免与 validate 双写漂移。
       return false;
     },
   });

@@ -25,7 +25,7 @@ const JUDGE_FINAL_CARD_KEY = '判定/finalJudgeCardId';
  *  时机1 判定时:咒缚 before-hook 可替换判定牌来源。
  *  时机2 判定(翻牌):底层操作,牌堆顶→结算帧牌区。
  *  时机3 判定牌生效前:鬼才/鬼道 改判(afterApply 调 runJudgeModifiers,逆时针从目标起,
- *    直接 mutate 结算帧顶牌)。
+ *    经 replaceJudgeCard 以两步「移动牌」atom 替换结算帧顶牌)。
  *  时机4 判定牌生效后:天妒/洛神/屯田 获得判定牌 / 闪电·乐不思蜀 等消费方 after-hook 读牌。
  *  收尾:记录最终判定牌 cardId 到 localVars,再把判定牌从结算帧移入弃牌堆
  *    (天妒/屯田 可能已在 生效后 拿走 → splice 为 no-op,但仍记录 cardId)。

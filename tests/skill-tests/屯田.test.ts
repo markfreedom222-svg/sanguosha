@@ -62,10 +62,8 @@ describe('屯田', () => {
 
   // ─── 端到端:非红桃 → 加田 + 距离修正 ────────────────────
   it('回合外被获得牌 → 判定非红桃 → 加田标记 + 距离修正', async () => {
-    // 注:auto-compare 必须关闭:屯田把判定牌拿作"田"(不经 atom),而「判定」atom 的
-    // applyView 假设判定牌必然进弃牌堆(discardPileCount+1),导致 processedView.discardPileCount
-    // 比 buildView 多 1(实测:期望 0,实际 1)。该 desync 属判定 atom 与屯田拿牌机制的交互,
-    // 与 distanceVars 通道无关;故下方 expectView 仅断言 distanceVars 单字段,绕开该 desync。
+    // 注:判定牌被屯田收作"田"曾致 processedView 与 buildView 漂移(discardPileCount 多 1),
+    // 已由「收取判定牌」atom 修复——判定牌去向全程经 atom 投影,auto-compare 保持开启。
 
     const p0card = makeCard('p0c', '杀', '♠', '5');
     // 判定牌:黑桃(非红桃)
@@ -276,11 +274,9 @@ describe('屯田', () => {
   });
 
   // ─── 隔离验证:加标记 atom 的 distanceVars 通道(auto-compare 开启)─────
-  // 屯田端到端流程中存在一个独立的预存 desync:
-  // 「判定」atom 的 applyView 假设判定牌必然进弃牌堆,但屯田把判定牌拿作"田",
-  // 导致 discardPileCount 不一致——故端到端用例必须关闭 auto-compare。
-  // 此用例绕开判定流程,直接走「加标记」atom + distanceVars 通道,auto-compare 全开,
-  // 证明 distanceVars 通道本身使 buildView 与 processedView 收敛(前后端一致)。
+  // 判定牌被收作"田"的视图漂移已由「收取判定牌」atom 修复,端到端用例的 auto-compare
+  // 保持开启。此用例绕开判定流程,直接走「加标记」atom + distanceVars 通道,进一步
+  // 隔离证明 distanceVars 通道本身使 buildView 与 processedView 收敛(前后端一致)。
   it('加标记 atom 的 distanceVars 通道:前后端 view 收敛(隔离验证)', async () => {
     const state: GameState = createGameState({
       players: [

@@ -20,6 +20,7 @@ import {
   getActionsForPlayer,
 } from '../../src/client/skillActionRegistry';
 import { buildView, dispatch, registerSkillsFromState } from '../../src/engine/index';
+import { applyAtom } from '../../src/engine/core/apply';
 import { createGameState, suitColor } from '../../src/engine/types';
 import type { Card, GameState, PlayerState } from '../../src/engine/types';
 import type { AvailableAction } from '../../src/client/headless/types';
@@ -58,16 +59,22 @@ function mkPlayer(opts: {
   } as PlayerState;
 }
 
-/** 组装 state 并按真实客户端路径注册技能 + 枚举 seat 的可执行动作。 */
+/** 组装 state 并按真实客户端路径注册技能 + 枚举 seat 的可执行动作。
+ *  currentPlayerIndex:视角回合之外的枚举(缺省 = seat 自己回合)。
+ *  askDodgeOn:经真实 applyAtom 路径给该座次挂一个阻塞型 询问闪 pending
+ *  (不 await:slot 同步落盘即可,resolve 挂起到用例结束;
+ *  该座次手牌须含闪,否则 preResolve 判 skip/silent 不落稳定 slot)。 */
 async function enumerateForSeat(opts: {
   players: PlayerState[];
   cardMap: Record<string, Card>;
   seat: number;
+  currentPlayerIndex?: number;
+  askDodgeOn?: number;
 }): Promise<{ state: GameState; actions: AvailableAction[] }> {
   const state = createGameState({
     players: opts.players,
     cardMap: opts.cardMap,
-    currentPlayerIndex: opts.seat,
+    currentPlayerIndex: opts.currentPlayerIndex ?? opts.seat,
     phase: '出牌',
     turn: { round: 1, phase: '出牌', vars: {} },
   });
@@ -75,6 +82,10 @@ async function enumerateForSeat(opts: {
   await registerSkillsFromState(state);
   clearRegistry();
   for (const p of state.players) await registerSkillActions(p.index, p.skills);
+  if (typeof opts.askDodgeOn === 'number') {
+    const source = (opts.askDodgeOn + 1) % state.players.length;
+    void applyAtom(state, { type: '询问闪', target: opts.askDodgeOn, source });
+  }
   const view = buildView(state, opts.seat);
   const actions = enumerateAvailableActions(view, opts.seat, getActionsForPlayer(opts.seat));
   return { state, actions };
@@ -132,6 +143,54 @@ describe('主公技 use action:非主公座次不得枚举(与引擎 validate �
         baseSeq: state.seq,
       });
       expect(result.accepted, `${c.skill} 主公用例必须被引擎接受`).toBe(true);
+    });
+  }
+});
+
+// 出牌场景门槛回归:激将/界激将 的 use action activeWhen 只判主公位时,
+// isActiveAction 的 replace 语义会放行「别人回合 / 阻塞询问中」的枚举——
+// 而引擎 validate 要求 myTurn && inActPhase && free,提交恒拒「现在不能使用激将」。
+// 门槛必须写成 defaultPlayActive(ctx) && isLordOwner(...),与 validate 同源。
+// (界制霸 不在此列:其 use门槛已由其他用例覆盖,本组只锁 激将族。)
+describe('主公技 use action:仅限自己回合+出牌阶段+无阻塞 pending(与引擎 validate 同源)', () => {
+  beforeEach(() => {
+    clearRegistry();
+  });
+
+  const GATE_CASES = CASES.filter((c) => c.skill !== '界制霸');
+
+  for (const c of GATE_CASES) {
+    it(`${c.skill}:主公座次在别人回合(currentPlayerIndex!==0)枚举不出 use action`, async () => {
+      const { actions } = await enumerateForSeat({
+        players: [
+          mkPlayer({ index: 0, name: '主公', character: c.character, faction: c.faction, identity: '主公', hand: ['a1'], skills: [c.skill, '回合管理'] }),
+          mkPlayer({ index: 1, name: '当前回合角色', character: '盟友', faction: c.allyFaction, identity: '忠臣', hand: ['c1'], skills: ['回合管理'] }),
+        ],
+        cardMap: { ...CARDS },
+        seat: 0,
+        currentPlayerIndex: 1,
+      });
+      const mine = actions.filter(
+        (a) => a.message.skillId === c.skill && a.message.actionType === 'use',
+      );
+      expect(mine, `${c.skill} 在别人回合被枚举出 → 引擎 validate 要求 myTurn,提交必拒`).toHaveLength(0);
+    });
+
+    it(`${c.skill}:主公座次存在指向自己的阻塞 pending(询问闪)时枚举不出 use action`, async () => {
+      const { actions } = await enumerateForSeat({
+        players: [
+          // 主公手牌含闪(a1):询问闪 preResolve 判 normal,slot 才会真实落盘
+          mkPlayer({ index: 0, name: '主公', character: c.character, faction: c.faction, identity: '主公', hand: ['a1'], skills: [c.skill, '回合管理'] }),
+          mkPlayer({ index: 1, name: '盟友', character: '盟友', faction: c.allyFaction, identity: '忠臣', hand: ['c1'], skills: ['回合管理'] }),
+        ],
+        cardMap: { ...CARDS },
+        seat: 0,
+        askDodgeOn: 0,
+      });
+      const mine = actions.filter(
+        (a) => a.message.skillId === c.skill && a.message.actionType === 'use',
+      );
+      expect(mine, `${c.skill} 在阻塞询问中被枚举出 → 引擎 validate 要求 free,提交必拒`).toHaveLength(0);
     });
   }
 });

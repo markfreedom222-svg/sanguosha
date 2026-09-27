@@ -74,6 +74,7 @@ export function CenterActionBar({
     distTargetName,
     selectedActive,
     playButtonState,
+    transformSubmit,
     selectedRespondCardId,
     respondTargetName,
     respondNeedsTarget,
@@ -183,11 +184,11 @@ export function CenterActionBar({
           const ids = transformMode.selectedCardIds;
           const enough =
             ids.length >= transformMode.minCards && ids.length <= transformMode.maxCards;
-          // 回应路径(被询问杀):打出无目标,选满牌数即可提交 杀.respond
-          const needsTarget =
-            !isRespondTransformContext &&
-            (transformMode.targetFilter ? transformMode.targetFilter.max >= 1 : true);
-          const canSubmit = enough && (!needsTarget || !!selectedTarget);
+          // 提交判定唯一来源 = play.transformSubmit(含 comboFilter 组合约束,乱击/界乱击
+          // 两张须同花色):内联 enough&&target 漏 combo 会渲染出「可点但提交静默失败」
+          // 的按钮。enough 只用于「还需选 N 张」计数文案。
+          const needsTarget = transformSubmit?.needsTarget ?? false;
+          const canSubmit = transformSubmit?.canSubmit ?? false;
           return (
             <button
               className={cx(styles.playBtn, !canSubmit && styles.btnDisabled)}

@@ -178,6 +178,60 @@ describe('界涅槃', () => {
     expect(harness.state.players[0].health).toBe(3);
   });
 
+  it('判定区延时锦囊实体牌已在弃牌堆:界涅槃弃判定区不双推(恰好一张)', async () => {
+    const slash = mkCard('s5', '杀', '♠', '7');
+    const lebu = mkCard('lebuD', '乐不思蜀', '♥', '6', '锦囊牌');
+
+    await harness.setup(
+      createGameState({
+        players: [
+          mkPlayer({
+            index: 0,
+            name: '界庞统',
+            character: '界庞统',
+            skills: ['界涅槃'],
+            health: 1,
+            maxHealth: 3,
+            // 真实对局常态:判定区只持快照,实体牌在使用时已入弃牌堆
+            pendingTricks: [{ name: '乐不思蜀', source: 1, card: lebu }],
+          }),
+          mkPlayer({
+            index: 1,
+            name: 'P1',
+            character: '反',
+            hand: [slash.id],
+            skills: ['杀'],
+          }),
+        ],
+        cardMap: { s5: slash, lebuD: lebu },
+        zones: { deck: [], discardPile: [lebu.id], processing: [] },
+        currentPlayerIndex: 1,
+        phase: '出牌',
+        turn: { round: 1, phase: '出牌', vars: {} },
+      }),
+    );
+    const P1 = harness.player('P1');
+    const PT = harness.player('界庞统');
+
+    await P1.useCardAndTarget('杀', 's5', [0]);
+    // 庞统 0 手牌 → 询问闪 skip → 直接受伤濒死 → 界涅槃 confirm pending
+    await harness.waitForStable();
+    await PT.respond('界涅槃', { choice: true }); // 发动
+    await harness.waitForStable();
+    await PT.respond('界涅槃', { choice: true }); // 选八阵(完成三选一)
+    await harness.waitForStable();
+
+    // 判定区快照被清除
+    expect(harness.state.players[0].pendingTricks).toHaveLength(0);
+    // 实体牌仍在弃牌堆且恰好一张:「弃置判定区」不得把已在弃牌堆的牌再推一次
+    expect(harness.state.zones.discardPile.filter((id) => id === lebu.id)).toHaveLength(1);
+    // 主流程照常:存活、回复至3体力、摸3张(不触及弃牌堆实体牌)
+    expect(harness.state.players[0].alive).toBe(true);
+    expect(harness.state.players[0].health).toBe(3);
+    expect(harness.state.players[0].hand).toHaveLength(3);
+    expect(harness.state.players[0].hand).not.toContain(lebu.id);
+  });
+
   it('三选一:选择火计 → 获得火计技能', async () => {
     const slash = mkCard('s1', '杀', '♠', '7');
     await harness.setup(

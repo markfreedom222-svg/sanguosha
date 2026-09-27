@@ -79,6 +79,16 @@ import type { QueuedEvent } from '../hooks/useEventPlayback';
 
 import type { ActionMsg } from '../types';
 
+/** 弃牌超时兜底的保留优先级表(桃:0 杀:1 闪:2 无懈可击:3,其余 9)。
+ *  字面同步自引擎 src/engine/atoms/请求回应.ts 的 onTimeout(`__弃牌` 分支,内联未导出)——
+ *  弃牌预览高亮与引擎实际自动弃置必须同一排序(低价值先弃,与手牌位置无关)。 */
+const DISCARD_KEEP_PRIORITY: Record<string, number> = {
+  '桃': 0,
+  '杀': 1,
+  '闪': 2,
+  '无懈可击': 3,
+};
+
 interface Props {
   view: EngineGameView;
   onAction: (action: ActionMsg) => void;
@@ -381,14 +391,21 @@ export function GameViewComponentImpl({
     [canPlayHandCard, isMyTurn, view, pending, skillActions, perspectiveIdx],
   );
 
-  // ─── 弃牌超时兜底预览(与「不回应」/超时兜底同策略:取手牌末尾 discardMin 张)───
-  // 最后 5 秒内高亮将被自动弃置的牌,避免静默弃牌惊吓;已选满 min 时不预览(走确认分支)。
+  // ─── 弃牌超时兜底预览(镜像引擎 请求回应.onTimeout 的保留优先级排序)───
+  // 引擎权威兜底(src/engine/atoms/请求回应.ts,requestType==='__弃牌' 分支)把手牌按
+  // 保留优先级降序排列后取前 excess 张——低价值先弃,与手牌位置无关:
+  //   桃:0 杀:1 闪:2 无懈可击:3,其余 9(该表为引擎内联字面量,未导出,此处按字面同步)
+  // 预览必须同一排序,否则最后 5 秒高亮的牌与实际自动弃置的牌不一致(标错牌)。
+  // 已选满 min 时不预览(走确认分支)。
   const countdownSec = useCountdownSeconds(deadline);
   const discardFallbackIds = useMemo(() => {
     if (!isDiscardPhase || !isPerspectiveAwaiting) return null;
     if (countdownSec == null || countdownSec > 5) return null;
     if (selectedForDiscard.length >= discardMin) return null;
-    return new Set(perspectiveHand.slice(-discardMin).map((c) => c.id));
+    const sorted = [...perspectiveHand].sort(
+      (a, b) => (DISCARD_KEEP_PRIORITY[b.name] ?? 9) - (DISCARD_KEEP_PRIORITY[a.name] ?? 9),
+    );
+    return new Set(sorted.slice(0, discardMin).map((c) => c.id));
   }, [
     isDiscardPhase,
     isPerspectiveAwaiting,
@@ -498,9 +515,16 @@ export function GameViewComponentImpl({
     readOnly
       ? {}
       : {
-          // Enter:respond 窗口优先;其后弃牌/转化/distribute 各自窗口的确认键(与按钮 enabled 同源);
-          // 最后是自由出牌的「出牌」键。
+          // Enter:转化模式最深(含回应窗口内进入的转化,如被询问杀时武圣/倾国选好牌后
+          // Enter 提交——须先于 respond 分支,否则转化模式里 Enter 被吞);其后 respond
+          // 窗口;再弃牌/distribute 各自窗口的确认键(与按钮 enabled 同源);最后自由出牌的「出牌」键。
           enter: () => {
+            if (transformMode) {
+              if (transformSubmit?.canSubmit) {
+                handleTransformPlay(transformSubmit.needsTarget ? selectedTarget! : '');
+              }
+              return;
+            }
             if (isRespondPending) {
               if (selectedRespondCardId && respondTargetReady) handlePlayRespond();
               return;
@@ -514,25 +538,23 @@ export function GameViewComponentImpl({
               }
               return;
             }
-            if (transformMode) {
-              if (transformSubmit?.canSubmit) {
-                handleTransformPlay(transformSubmit.needsTarget ? selectedTarget! : '');
-              }
-              return;
-            }
             if (isDistributeActive) {
               if (distSubmit?.canSubmit) handleDistSubmit();
               return;
             }
             if (playButtonState?.canPlay) handlePlayCard();
           },
-          // Esc:转化模式最深,先退转化;其次撤销回应选牌/目标;再次取消出牌选择
+          // Esc:转化模式最深,先退转化;其次撤销回应选牌/目标;再次取消出牌选择;
+          // 最后主动技选目标模式(pendingSkillAction:showCancelSelection 恒 false,
+          // 不补此分支则 Esc 退不出选目标态)。cancelSelection 已清 pendingSkillAction。
           escape: () => {
             if (transformMode) {
               cancelTransform();
             } else if (selectedRespondCardId || respondTargetName) {
               clearRespondSelection();
             } else if (showCancelSelection) {
+              cancelSelection();
+            } else if (skillTargetMode) {
               cancelSelection();
             }
           },

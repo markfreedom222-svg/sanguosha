@@ -5,7 +5,7 @@
 //   标鬼道:用一张黑色牌替换判定牌。
 //   界鬼道:同上,**且若替换牌为黑桃2~9,额外摸一张牌**。
 //
-// 其余机制(registerJudgeModifier / respond action / frameCards 直接 mutate)与标版一致。
+// 其余机制(registerJudgeModifier / respond action / replaceJudgeCard 改判)与标版一致。
 //
 // 命名:文件名/loader key/character skill name 均为 '界鬼道';
 //   内部 Skill.name = '鬼道'(OL 官方技能名,玩家可见)。

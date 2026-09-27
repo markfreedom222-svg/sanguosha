@@ -7,8 +7,8 @@
 //   2. 正面:转化无中生有并使用 → 摸两张牌(普通锦囊转化)
 //   3. 限一次:本回合第二次转化被拒绝
 //   4. 本轮已用:某牌名已被使用(任何玩家)→ 转化为该牌名被拒绝
-//   5. 边界:outputName 为响应锦囊(无懈可击)→ 拒绝
-//   6. 边界:outputName 为不存在的牌名 → 拒绝
+//   5. 边界:响应锦囊(无懈可击)不在可声明集合 → 客户端枚举不出对应 action
+//   6. 边界:不存在的牌名 → 客户端枚举不出对应 action
 //   7. 边界:非自己回合 → 拒绝
 //   8. 边界:非出牌阶段 → 拒绝
 //   9. 边界:原牌不在手牌 → 拒绝
@@ -18,6 +18,13 @@ import { SkillTestHarness } from '../engine-harness';
 import '../../src/engine/atoms';
 import { createGameState } from '../../src/engine/types';
 import type { Card, GameState } from '../../src/engine/types';
+import { enumerateAvailableActions } from '../../src/client/headless/availableActions';
+import {
+  registerSkillActions,
+  clearRegistry,
+  getActionsForPlayer,
+} from '../../src/client/skillActionRegistry';
+import { buildView } from '../../src/engine/index';
 
 function makeCard(
   id: string,
@@ -177,11 +184,11 @@ describe('界矫诏', () => {
     await harness.player('P1').pass();
     expect(usedThisTurn(harness.state, 0)).toBe(true);
 
-    // 第二次:再次 transform → 拒绝(限一次)
+    // 第二次:再次 transform → 拒绝(限一次;声明无中生有,避开「本轮已用杀」分支以隔离限一次)
     await P0.expectRejected({
       skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c2', outputName: '无中生有' },
+      actionType: 'transform:无中生有',
+      params: { cardId: 'c2' },
     });
   });
 
@@ -214,13 +221,16 @@ describe('界矫诏', () => {
     // P0 矫诏转化杀 → 拒绝(本轮已有角色使用过杀)
     await P0.expectRejected({
       skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c2', outputName: '杀' },
+      actionType: 'transform:杀',
+      params: { cardId: 'c2' },
     });
   });
 
-  // ─── 5. 边界:outputName 非基本/普通锦囊 → 拒绝 ─────────────────
-  it('outputName=无懈可击(响应锦囊)→ 拒绝', async () => {
+  // ─── 5. 边界:响应锦囊不在可声明集合 → 客户端根本枚举不出 ──────
+  // 「声明」已编码进 actionType(transform:<牌名>):无懈可击(timing='生效前' 的纯
+  // 回应锦囊)不在可声明集合,引擎/客户端都没有对应 action —— dispatch 一个不存在
+  // 的 action 恒被拒(expectRejected 测不出语义),改为断言枚举结果里没有。
+  it('声明名=无懈可击(响应锦囊):客户端枚举不出对应 action', async () => {
     const src = makeCard('c1', '杀', '♠', '7');
     const state: GameState = createGameState({
       players: [
@@ -233,17 +243,23 @@ describe('界矫诏', () => {
       turn: { round: 1, phase: '出牌', vars: {} },
     });
     await harness.setup(state);
-    const P0 = harness.player('P0');
-
-    await P0.expectRejected({
-      skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c1', outputName: '无懈可击' },
-    });
+    clearRegistry();
+    await registerSkillActions(0, harness.state.players[0].skills);
+    const transformTypes = enumerateAvailableActions(
+      buildView(harness.state, 0),
+      0,
+      getActionsForPlayer(0),
+    )
+      .filter((a) => a.message.preceding?.[0]?.skillId === '界矫诏')
+      .map((a) => a.message.preceding![0].actionType);
+    // 健全性:合法声明名(杀)确实枚举得出 —— 缺席断言才不是空转
+    expect(transformTypes).toContain('transform:杀');
+    expect(transformTypes).not.toContain('transform:无懈可击');
   });
 
-  // ─── 6. 边界:outputName 不存在 → 拒绝 ─────────────────────
-  it('outputName=不存在的牌名 → 拒绝', async () => {
+  // ─── 6. 边界:不存在的牌名 → 客户端根本枚举不出 ─────────────
+  // 同用例 5:未注册的声明名没有 transform:<牌名> action,断言枚举缺席而非 dispatch 被拒。
+  it('声明名=不存在的牌名:客户端枚举不出对应 action', async () => {
     const src = makeCard('c1', '杀', '♠', '7');
     const state: GameState = createGameState({
       players: [
@@ -256,13 +272,18 @@ describe('界矫诏', () => {
       turn: { round: 1, phase: '出牌', vars: {} },
     });
     await harness.setup(state);
-    const P0 = harness.player('P0');
-
-    await P0.expectRejected({
-      skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c1', outputName: '不存在牌名' },
-    });
+    clearRegistry();
+    await registerSkillActions(0, harness.state.players[0].skills);
+    const transformTypes = enumerateAvailableActions(
+      buildView(harness.state, 0),
+      0,
+      getActionsForPlayer(0),
+    )
+      .filter((a) => a.message.preceding?.[0]?.skillId === '界矫诏')
+      .map((a) => a.message.preceding![0].actionType);
+    // 健全性:合法声明名(杀)确实枚举得出 —— 缺席断言才不是空转
+    expect(transformTypes).toContain('transform:杀');
+    expect(transformTypes).not.toContain('transform:不存在牌名');
   });
 
   // ─── 7. 边界:非自己回合 → 拒绝 ─────────────────────────
@@ -283,8 +304,8 @@ describe('界矫诏', () => {
 
     await P0.expectRejected({
       skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c1', outputName: '杀' },
+      actionType: 'transform:杀',
+      params: { cardId: 'c1' },
     });
   });
 
@@ -306,8 +327,8 @@ describe('界矫诏', () => {
 
     await P0.expectRejected({
       skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c1', outputName: '杀' },
+      actionType: 'transform:杀',
+      params: { cardId: 'c1' },
     });
   });
 
@@ -329,8 +350,8 @@ describe('界矫诏', () => {
 
     await P0.expectRejected({
       skillId: '界矫诏',
-      actionType: 'transform',
-      params: { cardId: 'c1', outputName: '杀' },
+      actionType: 'transform:杀',
+      params: { cardId: 'c1' },
     });
   });
 

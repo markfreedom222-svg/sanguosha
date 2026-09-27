@@ -14,7 +14,7 @@
 //
 // 三类入口(共用 runQuestioning 质疑流程):
 //   1. use(主动,杀/桃/酒):出牌阶段、自己回合、无阻塞 pending、存活、本回合未用过。
-//      params: { cardId(扣牌), declaredName(杀/桃/酒), target?(杀/桃的目标) }。
+//      params: { cardId(扣牌), target?(杀的目标) }; 声明牌名编码在 actionType(use:杀/use:桃/use:酒)。
 //   2. dodge(响应·闪):被【杀】指定(询问闪 pending 命中自己)时,扣一张手牌声明为闪打出。
 //      质疑无人/真 → 提供一张"闪"到当前结算帧处理区(供杀结算检测处理区有闪 → 抵消)。
 //   3. rescue(响应·桃濒死救援):濒死求桃(桃/求桃 pending 命中自己)时,扣一张手牌声明为桃打出。
@@ -92,7 +92,6 @@ type ActiveDeclaration = (typeof ACTIVE_DECLARATIONS)[number];
  *  编码进 actionType 后,声明由用户点哪个按钮决定,前后端一一对应。
  *  (与 界渐营/界矫诏 的 `transform:<牌名>` 同款约定。) */
 const USE_ACTION_PREFIX = 'use:';
-type DeclaredName = '杀' | '闪' | '桃' | '酒';
 
 export function createSkill(id: string, ownerId: number): Skill {
   return {
@@ -371,7 +370,7 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
           const target = params.target as number | undefined;
           if (typeof target !== 'number' || !st.players[target]?.alive) return '请选择合法目标';
           if (!inAttackRange(st, ownerId, target)) return '目标不在攻击范围内';
-          if (!canSlash(st, ownerId)) return '出杀次数已达上限';
+          if (!canSlash(st, ownerId, cardId)) return '出杀次数已达上限';
         } else if (declaredName === '桃') {
           const target = (params.target as number | undefined) ?? ownerId;
           const tp = st.players[target];
@@ -538,7 +537,7 @@ export function onInit(skill: Skill, state: GameState): (() => void) | void {
 export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
   // use:每个声明牌名一个 action(与后端 `use:<牌名>` 一一对应)。
   // 声明【杀】:需选目标(攻击范围内,与后端 杀 分支的 inAttackRange 同源);
-  // 声明【桃】:自疗(同 桃 的 selfTarget),需有受伤角色;
+  // 声明【桃】:自疗(同 桃 的 selfTarget),需自己受伤(镜像 桃 的 peachActiveWhen);
   // 声明【酒】:无目标。
   api.defineAction(`${USE_ACTION_PREFIX}杀`, {
     label: '蛊惑·杀',
@@ -573,9 +572,11 @@ export function onMount(_skill: Skill, api: FrontendAPI): (() => void) | void {
       },
       selfTarget: true,
     },
-    activeWhen: (ctx: ActionContext) =>
-      activeUseActive(ctx) &&
-      ctx.view.players.some((p) => p.alive === true && p.health < p.maxHealth),
+    activeWhen: (ctx: ActionContext) => {
+      if (!activeUseActive(ctx)) return false;
+      const p = ctx.view.players[ctx.perspectiveIdx];
+      return p?.alive === true && p.health < p.maxHealth;
+    },
   });
   api.defineAction(`${USE_ACTION_PREFIX}酒`, {
     label: '蛊惑·酒',
