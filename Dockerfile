@@ -11,6 +11,7 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3930
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/src ./src
+COPY --from=build --chown=node:node /app/drizzle ./drizzle
 COPY --from=build --chown=node:node /app/package.json ./package.json
 RUN mkdir /app/data && chown node:node /app/data
 USER node
