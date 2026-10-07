@@ -99,4 +99,4 @@ Plugin 包 `sanguosha-agent-plugin` 自包含玩家向 skill + sanguosha MCP ser
 
 ## 当前版本服务器部署
 
-服务器拉取仓库后可直接用 `pnpm dev` 启动，默认监听 `0.0.0.0:9527`；首次运行前执行 `pnpm resources:install` 安装图片和音频。Docker Compose 是可选方式。完整步骤见 [服务器部署说明](deploy/README.md)，资源来源与许可见 [资源说明](docs/resources-local.md)。
+服务器推荐使用 Docker Compose 后台启动，默认公网端口 9527，支持进程退出后自动重启。从已有 pnpm 服务切换时可执行 `bash deploy/start-docker.sh`，脚本会在数据卷为空时迁移原账号及房间数据。完整步骤见 [服务器部署说明](deploy/README.md)，资源来源与许可见 [资源说明](docs/resources-local.md)。

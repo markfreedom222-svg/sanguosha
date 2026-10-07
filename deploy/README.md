@@ -1,5 +1,27 @@
 # 服务器部署
 
+## 从现有 pnpm 服务切换到 Docker
+
+先停止原来的 pnpm/Node 游戏进程，再操作，确保数据库没有被使用且 9527 端口空闲。服务器安装 Docker Engine 与 Compose 插件后运行：
+
+```sh
+cd /opt/sanguosha
+git pull --ff-only
+sudo systemctl enable --now docker
+bash deploy/start-docker.sh
+```
+
+脚本构建镜像；首次切换且项目存在 `data/db` 时，将旧 `data/` 复制到空 Docker 数据卷，保留原数据文件。已有 Docker 数据库不会被覆盖。随后以后台方式启动。两项服务已设置 `restart: unless-stopped`，进程退出后自动重启，Docker 服务启动后也会恢复运行（主动停止的容器除外）。
+
+访问 `http://服务器公网IP:9527`，查看状态和日志：
+
+```sh
+docker compose ps
+docker compose logs --tail=100 -f game web
+```
+
+如果停止问题来自程序错误，Docker 会尝试重启，但仍需根据日志修复错误。关闭 SSH 不会停止容器。
+
 ## 直接用 pnpm 启动
 
 服务器需要 Node.js 24 和 pnpm。你的仓库已克隆到 `/opt/sanguosha` 时，先停止原来的进程，再执行：
@@ -16,7 +38,7 @@ pnpm dev
 
 资源安装会下载固定版本的武将图片、卡牌图片、音效和背景音乐，下载成功后保留在本地，普通代码更新不必重新安装资源。数据仍保存在项目的 `data/` 中。`pnpm dev` 在前台运行，关闭终端会结束进程；需要关闭 SSH 后继续运行可用 tmux 管理终端会话。
 
-## 可选：Docker Compose
+## 推荐：Docker Compose
 
 服务器需 Linux、Docker Engine、Docker Compose 插件，并能访问 npm、GitHub API 与 raw.githubusercontent.com。
 
