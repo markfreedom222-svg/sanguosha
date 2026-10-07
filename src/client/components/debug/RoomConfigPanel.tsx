@@ -1,3 +1,4 @@
+import { SoundControl } from '../SoundControl';
 // src/client/components/debug/RoomConfigPanel.tsx — 房间配置 + 准备面板
 //
 // 调试房间创建后、游戏开始前显示。
@@ -303,7 +304,10 @@ export function RoomConfigPanel({
   return (
     <div className={page}>
       <div className={card}>
-        <h2 className={title}>房间配置</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <h2 className={title}>房间配置</h2>
+          <SoundControl />
+        </div>
         <p className={subtitle}>配置完成后,切换到每个座次视角点「准备」。全部准备后可开始。</p>
 
         {/* 房间名 */}

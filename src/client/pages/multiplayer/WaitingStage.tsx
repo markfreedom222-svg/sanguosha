@@ -5,6 +5,7 @@
 // 持有 editConfig 与复制反馈 state;对局历史 history 由页面 useRoomHistory 传入(刷新语义不变)。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SoundControl } from '../../components/SoundControl';
 import { OnboardingGuide } from '../../components/OnboardingGuide';
 import { RoomHistoryPanel } from '../../components/RoomHistoryPanel';
 import { ChatConfigSection } from '../../components/ChatConfigSection';
@@ -100,7 +101,10 @@ export function WaitingStage({ history }: WaitingStageProps) {
         }}
       />
       <div className={page}>
-        <h1 className={pageTitle}>等待大厅</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <h1 className={pageTitle}>等待大厅</h1>
+          <SoundControl />
+        </div>
         <p className={subtitle}>{mp.isSpectator ? '👁 旁观中 · 点击空位加入游戏' : '等待玩家加入并准备'}</p>
         <div className={card}>
           <div className={roomCodeBox}>

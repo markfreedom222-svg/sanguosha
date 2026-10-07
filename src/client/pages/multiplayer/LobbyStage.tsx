@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { css, cx } from '@linaria/core';
+import { SoundControl } from '../../components/SoundControl';
 import { RoomListPanel } from '../../components/RoomListPanel';
 import { apiFetch, ApiError } from '../../api/client';
 import { inputStyle } from '../../theme';
@@ -145,6 +146,7 @@ export function LobbyStage() {
           ← 返回首页
         </button>
         <span className={topBarTag}>多人对战</span>
+        <SoundControl />
       </header>
       <div className={lobbyLayout}>
         <div className={lobbyMain}>
