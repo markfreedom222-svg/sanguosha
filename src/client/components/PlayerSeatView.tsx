@@ -775,12 +775,12 @@ const seatHandBadge = css`
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(138, 116, 72, 0.5);
   color: #ffe5a3;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 900;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
