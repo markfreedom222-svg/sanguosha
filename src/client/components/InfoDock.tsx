@@ -20,6 +20,7 @@ import { css, cx } from '@linaria/core';
 import type { GameView } from '../../engine/types';
 import type { ChatConfig } from '../../server/protocol';
 import type { ChatMessage } from '../headless/types';
+import { formatChatSender } from '../utils/chatSender';
 import { useGameView } from './GameViewCtx';
 import { colors } from '../theme';
 import { formatTime as fmtGameTime } from './gameViewConstants';
@@ -318,13 +319,11 @@ function LogTab({ view }: { view: GameView }) {
 }
 
 function ChatTab({
-  view,
   messages,
   config,
   onSend,
   mySeatIndex,
 }: {
-  view: GameView;
   messages: ChatMessage[];
   config: ChatConfig | undefined;
   onSend: ((text: string) => void) | undefined;
@@ -367,9 +366,7 @@ function ChatTab({
         )}
         {messages.map((m, i) => {
           const mine = mySeatIndex !== undefined && m.seatIndex === mySeatIndex;
-          // 发送者显示武将名,与 LogTab 同源(查 view.players);查不到时退回座次号。
-          const playerView = view.players.find((p) => p.index === m.seatIndex);
-          const name = `${playerView?.name ?? `P${m.seatIndex + 1}`}${mine ? '（我）' : ''}`;
+          const name = formatChatSender(m);
           return (
             <div key={i} className={mine ? chatMsgRowMine : chatMsgRow}>
               <span className={chatMsgName}>{name}</span>
@@ -484,7 +481,6 @@ const InfoDockImpl = memo(({
             <LogTab view={view} />
           ) : (
             <ChatTab
-              view={view}
               messages={chatMessages ?? []}
               config={chatConfig}
               onSend={onSendChat}

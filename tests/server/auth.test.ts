@@ -3,7 +3,7 @@
 // 2026-08-17 二次扩展:游客模式移除——房间身份强制登录(playerId=userId)、
 // playerNames 显示名投影、改名传播、profile/password 端点、SSE sgs_token。
 // 来源:用户登录认证 + 房间密码 + 移除游客模式需求;后续相关回归用例归并到此文件。
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Hono } from 'hono';
 import { applyAuthRoutes } from '../../src/server/auth/routes';
 import { applyRestRoutes } from '../../src/server/rest';
@@ -1120,5 +1120,62 @@ describe('房间密码', () => {
     const row = rows.find((r) => r.id === roomId);
     expect(row?.passwordHash).toMatch(/^[0-9a-f]+:[0-9a-f]+$/);
     expect(row?.playerNames?.[host.userId]).toBe(host.displayName);
+  });
+});
+
+
+describe('multiplayer chat identity and repeated rounds', () => {
+  it('live chat and history contain the authenticated username and rotated hero', async () => {
+    const app = makeApp();
+    const host = await registerUser(app, 'chat_snapshot_host');
+    const response = await app.request('/api/rooms', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: host.cookie },
+      body: JSON.stringify({ name: '聊天身份快照', maxPlayers: 2 }),
+    });
+    const { roomId } = await response.json() as { roomId: string };
+    const room = getRoom(roomId)!;
+    const sent: import('../../src/server/protocol').ServerMessage[] = [];
+    room.players.set(host.userId, { send: (message) => { sent.push(message); }, close: () => {}, isAlive: true });
+    const session = new GameSession(room, false);
+    gameSessions.set(roomId, session);
+    vi.spyOn(session, 'getChatSender').mockReturnValue({ seatIndex: 1, username: '显示昵称', character: '刘备' });
+    setRoomStatus(roomId, '进行中');
+    const result = await app.request(`/api/rooms/${roomId}/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: host.cookie },
+      body: JSON.stringify({ text: '大家好', playerId: 'fake', username: 'fake', character: '曹操' }),
+    });
+    expect(result.status).toBe(200);
+    const live = sent.find((message) => message.type === 'chat');
+    expect(live).toMatchObject({ playerId: host.userId, seatIndex: 1, username: 'chat_snapshot_host', character: '刘备' });
+    const history = await app.request(`/api/rooms/${roomId}/chat/history`, { headers: { Cookie: host.cookie } });
+    const entries = await history.json() as import('../../src/server/protocol').ChatEntry[];
+    expect(live).toEqual({ type: 'chat', ...entries[0] });
+    gameSessions.delete(roomId);
+  });
+
+  it('both players can ready and start round two using the reset session', async () => {
+    const app = makeApp();
+    const host = await registerUser(app, 'round_two_host');
+    const guest = await registerUser(app, 'round_two_guest');
+    const request = async (url: string, cookie: string, body = {}) => app.request(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify(body),
+    });
+    const response = await request('/api/rooms', host.cookie, { name: '连续两局', maxPlayers: 2 });
+    const { roomId } = await response.json() as { roomId: string };
+    expect((await request(`/api/rooms/${roomId}/join`, guest.cookie)).status).toBe(200);
+    const room = getRoom(roomId)!;
+    for (const user of [host, guest]) room.players.set(user.userId, { send: () => {}, close: () => {}, isAlive: true });
+    for (const user of [host, guest]) expect((await request(`/api/rooms/${roomId}/ready`, user.cookie)).status).toBe(200);
+    expect((await request(`/api/rooms/${roomId}/start`, host.cookie)).status).toBe(200);
+    const first = gameSessions.get(roomId)!;
+    setRoomStatus(roomId, '已结束');
+    expect((await request(`/api/rooms/${roomId}/restart`, host.cookie)).status).toBe(200);
+    expect(room.status).toBe('等待中');
+    for (const user of [host, guest]) expect((await request(`/api/rooms/${roomId}/ready`, user.cookie)).status).toBe(200);
+    expect((await request(`/api/rooms/${roomId}/start`, host.cookie)).status).toBe(200);
+    expect(gameSessions.get(roomId)).toBe(first);
+    expect(room.status).toBe('进行中');
+    await first.destroy();
+    gameSessions.delete(roomId);
   });
 });

@@ -36,12 +36,7 @@ export type ClientPhase = 'connecting' | 'lobby' | 'playing' | 'ended';
  *  - failed: 达到最大重试次数,放弃重连 */
 export type ReconnectState = 'idle' | 'reconnecting' | 'failed';
 
-export interface ChatMessage {
-  playerId: string;
-  seatIndex: number;
-  text: string;
-  timestamp: number;
-}
+export type ChatMessage = import('../../server/protocol').ChatEntry;
 
 export interface HeadlessCallbacks {
   onView?: (view: GameView, newEvents: ViewEvent[]) => void;

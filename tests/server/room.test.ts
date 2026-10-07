@@ -821,6 +821,15 @@ describe('聊天功能', () => {
     return room;
   }
 
+  it('history retains the game seat, username and hero captured when sending', () => {
+    const room = makeChatRoom();
+    const result = addChatMessage(room.id, 'host1', '  大家好  ', { seatIndex: 2, username: 'alice', character: '刘备' });
+    expect(result.message).toMatchObject({ playerId: 'host1', seatIndex: 2, username: 'alice', character: '刘备', text: '大家好' });
+    expect(getChatHistory(room.id)).toEqual([result.message]);
+    room.playerNames.set('host1', 'changed');
+    expect(getChatHistory(room.id)[0].username).toBe('alice');
+  });
+
   it('正常发送聊天消息成功', () => {
     const room = makeChatRoom();
     const result = addChatMessage(room.id, 'host1', '大家好');

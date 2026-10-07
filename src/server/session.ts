@@ -476,8 +476,9 @@ export class GameSession {
    */
   private attachStateListener(): void {
     if (!this.state) return;
+    const observedState = this.state;
     this.state.onStateChange = () => {
-      if (this.destroyed || !this.state) return;
+      if (this.destroyed || this.state !== observedState) return;
       // 游戏已结束:拦截 gameOver 之后的残留广播。本次 onStateChange 已广播了触发
       // gameOver 的 atom(如 击杀主公);标记后,杀.execute finally 的 移动牌/popFrame、
       // 父帧恢复产生的 出牌窗口 等后续 atom 的 onStateChange 直接 return,不再下发。
@@ -491,8 +492,8 @@ export class GameSession {
       this.maybeCaptureReplayBaseline();
       this.broadcastNewState();
       this.persistAsync();
-      void checkGameOver(this.state).then(({ gameOver, winner }) => {
-        if (this.destroyed || this.gameOverHandled) return;
+      void checkGameOver(observedState).then(({ gameOver, winner }) => {
+        if (this.destroyed || this.gameOverHandled || this.state !== observedState) return;
         if (gameOver) {
           // handleGameOver 内部设 gameOverHandled=true:本次已广播触发 gameOver 的 atom
           // (如 击杀主公),后续 atom(移动牌/popFrame/出牌窗口)的 onStateChange 被 return 拦截。
@@ -803,6 +804,19 @@ export class GameSession {
 
   getPlayerName(playerId: string): number | undefined {
     return this.playerNames.get(playerId);
+  }
+
+  /** 发送聊天时冻结身份，避免大厅座位轮转和后续选将改变历史署名。 */
+  getChatSender(playerId: string): { seatIndex: number; username: string; character: string } | undefined {
+    const seatIndex = this.playerNames.get(playerId);
+    const player = seatIndex === undefined ? undefined : this.state?.players[seatIndex];
+    if (seatIndex === undefined || !player) return undefined;
+    return {
+      seatIndex,
+      username: this.room.playerNames.get(playerId) ?? player.nickname ?? playerId,
+      // 聊天广播给全房间，选将期间不泄露尚未公开的英雄。
+      character: this.state?.charSelecting ? '' : player.character,
+    };
   }
 
   getState(): GameState | null {

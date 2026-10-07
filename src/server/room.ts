@@ -1,6 +1,6 @@
 // server/room.ts
 import type { ConnectionSink } from './connection';
-import type { RoomInfo, RoomConfig, ServerMessage } from './protocol';
+import type { RoomInfo, RoomConfig, ServerMessage, ChatEntry } from './protocol';
 import { DEFAULT_ROOM_CONFIG, normalizeRoomConfig } from './protocol';
 import { createRng } from '../engine/util/rng';
 import { register } from './lifecycles';
@@ -32,7 +32,7 @@ export interface Room {
   /** 聊天用量跟踪：playerId → { total: number; timestamps: number[] } */
   chatUsage: Map<string, { total: number; timestamps: number[] }>;
   /** 聊天历史（最近 50 条，供重连获取） */
-  chatHistory: Array<{ playerId: string; seatIndex: number; text: string; timestamp: number }>;
+  chatHistory: ChatEntry[];
   /** 进房密码哈希(scrypt `salt:hash`);null=无密码。永不存明文、永不下发客户端。 */
   passwordHash: string | null;
   /** 座位表：seats[i] = 座次 i 的 playerId，null=空座。长度始终 = maxPlayers */
@@ -871,6 +871,7 @@ export function revokeView(roomId: string, spectatorId: string): Room | null {
 /** 聊天验证结果。 */
 export interface ChatValidation {
   ok: boolean;
+  message?: ChatEntry;
   error?: string;
   /** 发送后本局剩余次数（null=无限） */
   remaining?: number | null;
@@ -890,6 +891,7 @@ export function addChatMessage(
   roomId: string,
   playerId: string,
   text: string,
+  sender?: Pick<ChatEntry, 'seatIndex' | 'username' | 'character'>,
 ): ChatValidation {
   const room = roomList.get(roomId);
   if (!room) return { ok: false, error: '房间不存在' };
@@ -941,23 +943,18 @@ export function addChatMessage(
   if (seatIndex < 0) return { ok: false, error: '不在房间中' };
 
   // 存入历史
-  const entry = { playerId, seatIndex, text: trimmed, timestamp: now };
+  const entry: ChatEntry = { playerId, seatIndex, username: room.playerNames.get(playerId), ...sender, text: trimmed, timestamp: now };
   room.chatHistory.push(entry);
   if (room.chatHistory.length > CHAT_HISTORY_LIMIT) {
     room.chatHistory.shift();
   }
 
   const remaining = chat.maxPerGame > 0 ? chat.maxPerGame - usage.total : null;
-  return { ok: true, remaining };
+  return { ok: true, remaining, message: entry };
 }
 
 /** 获取聊天历史（供重连）。 */
-export function getChatHistory(roomId: string): Array<{
-  playerId: string;
-  seatIndex: number;
-  text: string;
-  timestamp: number;
-}> {
+export function getChatHistory(roomId: string): ChatEntry[] {
   const room = roomList.get(roomId);
   return room ? [...room.chatHistory] : [];
 }

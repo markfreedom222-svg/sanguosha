@@ -449,6 +449,22 @@ describe('身份分配座次轮转 (multiplayer 非 debug)', () => {
     expect(hostIsLord).toBeLessThan(seeds);
   }, 30000);
 
+  it('chat uses the rotated game seat and freezes the matching username and hero', async () => {
+    const { room } = makeMultiplayerRoom(['h', 'a', 'b', 'c']);
+    const session = new GameSession(room, false, 99);
+    await session.startGame();
+    const state = getState(session) as GameState;
+    state.charSelecting = false;
+    state.players.forEach((player, i) => { player.character = `英雄${i}`; });
+    for (const pid of ['h', 'a', 'b', 'c']) {
+      const seat = session.getPlayerName(pid)!;
+      expect(session.getChatSender(pid)).toEqual({ seatIndex: seat, username: room.playerNames.get(pid), character: `英雄${seat}` });
+    }
+    state.charSelecting = true;
+    expect(session.getChatSender('h')?.character).toBe('');
+    expect(session.getChatSender('outsider')).toBeUndefined();
+  });
+
   it('4 人场:所有物理座位映射 = (i+seatRotation)%n,主公落到随机物理座位', async () => {
     const { room } = makeMultiplayerRoom(['h', 'a', 'b', 'c']);
     const session = new GameSession(room, false, 99);

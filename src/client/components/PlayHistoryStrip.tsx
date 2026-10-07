@@ -12,6 +12,7 @@ export type PlayHistoryStripProps = {
 };
 
 function PlayHistoryStripImpl({ items }: PlayHistoryStripProps) {
+  if (items.length === 0) return null;
   return (
     <div className={strip} aria-label="出牌展示" data-play-history-count={items.length}>
       {items.map((it) => {
@@ -49,13 +50,10 @@ const strip = css`
   align-items: flex-end;
   justify-content: center;
   gap: 6px;
-  min-height: 72px;
   max-width: min(720px, 96%);
   overflow-x: auto;
   padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(201, 162, 39, 0.35);
   scrollbar-width: thin;
   pointer-events: none;
 `;

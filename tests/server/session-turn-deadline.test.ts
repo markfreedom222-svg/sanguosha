@@ -467,6 +467,19 @@ describe('session.resetToLobby:游戏结束后重新进入准备阶段', () => {
     (session as unknown as { attachStateListener: () => void }).attachStateListener();
   });
 
+  it('ignores a previous round victory check that completes after returning to lobby', async () => {
+    const state = getState(session);
+    const flags = session as unknown as { gameOverHandled: boolean; broadcast: (m: ServerMessage) => void };
+    const broadcast = vi.spyOn(flags, 'broadcast');
+    state.players[0].alive = false;
+    state.onStateChange!();
+    session.resetToLobby();
+    await checkGameOver(state);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(flags.gameOverHandled).toBe(false);
+    expect(broadcast.mock.calls.filter(([message]) => message.type === 'gameOver')).toHaveLength(0);
+  });
+
   it('resetToLobby:房间回到等待中,清除 gameOverHandled,清空准备,广播 game_reset', async () => {
     const state = getState(session);
     const s = session as unknown as {

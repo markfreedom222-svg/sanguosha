@@ -169,6 +169,16 @@ export interface DeadlineInfo {
  *   effect 不下发,前端通过 AtomDefinition.effect 静态查表。
  *   deadline 仅在变化时附加(合并了 pending deadline 和 turn idle deadline)。
  */
+/** 聊天发送时的身份快照，seatIndex 使用游戏座次而非大厅物理座位。 */
+export interface ChatEntry {
+  playerId: string;
+  seatIndex: number;
+  username?: string;
+  character?: string;
+  text: string;
+  timestamp: number;
+}
+
 export type ServerMessage =
   | { type: 'initialView'; state: GameView; lastSeq: EventSeq }
   | {
@@ -219,8 +229,8 @@ export type ServerMessage =
   | { type: 'view_granted'; spectatorId: string; seatIndex: number }
   | { type: 'view_revoked'; spectatorId: string }
   | { type: 'role_changed'; playerId: string; newRole: 'player' | 'spectator' }
-  | { type: 'chat'; playerId: string; seatIndex: number; text: string; timestamp: number }
-  | { type: 'chat_history'; messages: Array<{ playerId: string; seatIndex: number; text: string; timestamp: number }> }
+  | ({ type: 'chat' } & ChatEntry)
+  | { type: 'chat_history'; messages: ChatEntry[] }
   | { type: 'seat_swap_request'; requesterId: string; requesterSeat: number; targetSeat: number; targetPlayerId: string; expiresAt: number }
   | { type: 'seat_swap_result'; success: boolean; requesterId: string; responderId: string }
 

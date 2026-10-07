@@ -500,6 +500,8 @@ export class HeadlessGameClient {
       this.callbacks.onChat?.([{
         playerId: msg.playerId,
         seatIndex: msg.seatIndex,
+        username: msg.username,
+        character: msg.character,
         text: msg.text,
         timestamp: msg.timestamp,
       }], 'chat');

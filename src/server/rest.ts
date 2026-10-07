@@ -424,8 +424,8 @@ export function applyRestRoutes(app: Hono): void {
       return c.json({ error: '还有玩家未准备' }, 400);
     }
 
-    let session = room.isDebug ? (gameSessions.get(roomId) ?? undefined) : undefined;
-    if (!session) {
+    let session = gameSessions.get(roomId);
+    if (!session || session.isDestroyed()) {
       session = new GameSession(room, room.isDebug === true);
       gameSessions.set(roomId, session);
     }
@@ -520,10 +520,12 @@ export function applyRestRoutes(app: Hono): void {
     // 身份解析:非调试房间一律取会话 userId(body.playerId 忽略,防冒充他人发言);
     // 调试房保持游客模型(query/body.playerId)。
     let playerId: string;
+    let username: string | undefined;
     if (!room.isDebug) {
       const user = await requireUser(c);
       if (!user) return c.json({ error: '请先登录', code: 'AUTH_REQUIRED' }, 401);
       playerId = user.id;
+      username = user.username;
     } else {
       const q = typeof raw.playerId === 'string' ? raw.playerId : '';
       if (!q) return c.json({ error: '缺少 playerId' }, 400);
@@ -531,19 +533,12 @@ export function applyRestRoutes(app: Hono): void {
     }
     if (!room.players.has(playerId)) return c.json({ error: '不在房间中' }, 403);
 
-    const result = addChatMessage(roomId, playerId, text);
-    if (!result.ok) return c.json({ error: result.error }, 400);
+    const sender = gameSessions.get(roomId)?.getChatSender(playerId);
+    const result = addChatMessage(roomId, playerId, text, sender ? { ...sender, username: username ?? sender.username } : undefined);
+    if (!result.ok || !result.message) return c.json({ error: result.error ?? '无法记录聊天消息' }, 400);
 
-    // 座次必须从 seats 数组反查:players Map 的 key 序是连接建立序,
-    // 断线重连/换座后与真实座次无关,用它当 seatIndex 会把消息挂到错误座位卡上。
-    const seatIndex = room.seats.indexOf(playerId);
-    broadcastMessage(room, {
-      type: 'chat',
-      playerId,
-      seatIndex,
-      text: text.trim(),
-      timestamp: Date.now(),
-    });
+    // 实时广播与历史共用同一条记录（身份、游戏座次、时间戳完全一致）。
+    broadcastMessage(room, { type: 'chat', ...result.message });
 
     return c.json({ success: true, remaining: result.remaining });
   });

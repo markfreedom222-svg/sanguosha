@@ -8,6 +8,7 @@ import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { css } from '@linaria/core';
 import type { ChatConfig } from '../../server/protocol';
 import type { ChatMessage } from '../headless/types';
+import { formatChatSender } from '../utils/chatSender';
 import { colors } from '../theme';
 
 interface ChatPanelProps {
@@ -228,11 +229,6 @@ export const ChatPanel = memo(
     const maxChars = config?.maxChars ?? 0;
     const overLimit = maxChars > 0 && input.length > maxChars;
 
-    const playerLabel = (seatIndex: number) => {
-      if (seatIndex === mySeatIndex) return '我';
-      return `P${seatIndex + 1}`;
-    };
-
     return (
       <div className={collapsed ? panelRootCollapsed : panelRoot}>
         <div className={header} onClick={() => setCollapsed((c) => !c)}>
@@ -255,7 +251,7 @@ export const ChatPanel = memo(
                   return (
                     <div key={i} className={isMine ? msgRowMine : msgRow}>
                       <span className={msgName}>
-                        {isMine ? '' : playerLabel(msg.seatIndex)}
+                        {formatChatSender(msg)}
                       </span>
                       {msg.text}
                       <span style={{ fontSize: '10px', opacity: 0.5, marginLeft: '4px' }}>
