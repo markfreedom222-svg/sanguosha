@@ -766,7 +766,7 @@ const seatHpNumber = css`
     0 1px 2px rgba(0, 0, 0, 0.85),
     0 0 6px rgba(255, 60, 40, 0.45);
 `;
-// 手牌数角标:卡内右下角小暗章「🂠 N」
+// 手牌数角标:卡内右下角高对比大号数字「🂠 N」。
 const seatHandBadge = css`
   position: absolute;
   right: 4px;
@@ -774,15 +774,16 @@ const seatHandBadge = css`
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
+  gap: 4px;
+  padding: 3px 7px;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(138, 116, 72, 0.5);
-  color: #e8c47a;
-  font-size: 10px;
-  font-weight: bold;
-  line-height: 1.4;
+  color: #ffe5a3;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 `;
 // 死亡印章:旋转红字方印盖在卡面(立绘同时 grayscale)
