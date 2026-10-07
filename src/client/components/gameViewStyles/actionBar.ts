@@ -396,7 +396,7 @@ export const playerCardHpNumber = css`
   flex-shrink: 0;
   display: inline-block;
   line-height: 1;
-  font-size: 17px;
+  font-size: 24px;
   font-weight: 900;
   color: #ff5f52;
   text-shadow:
@@ -406,7 +406,7 @@ export const playerCardHpNumber = css`
 // 右缘体力珠列:垂直排列,骑在卡右边框上(与座位卡同款水滴珠;尺寸由内联按 maxHealth 缩放)
 export const playerCardHpBeadCol = css`
   position: absolute;
-  right: -5px;
+  right: -7px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 5;

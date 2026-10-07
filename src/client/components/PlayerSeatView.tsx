@@ -149,13 +149,11 @@ function PlayerSeatViewImpl({
   const showIdentity =
     identity && (!hideIdentity || isPerspective || identity === '主公' || !player.alive);
 
-  // 体力珠动态缩放:珠体基础 10×14px + 间距 3px,整列布局高度 = 17N−3(N=maxHealth);
-  // 卡高 200px,仅 N ≥ 12(17×12−3=201>200)才会溢出卡面,此时按 6/maxHealth 等比缩小
-  // 珠体与间距,使珠列完整排在卡右缘内;N ≤ 11 沿用原值(董卓 8 血/主公+1 后 9 血不再无谓缩小)。
-  const hpScale = player.maxHealth >= 12 ? 6 / player.maxHealth : 1;
-  const beadW = `${10 * hpScale}px`;
-  const beadH = `${14 * hpScale}px`;
-  const hpGap = `${3 * hpScale}px`;
+  // 放大体力珠至 14×18px；高体力武将按整列高度缩放，留在 200px 卡面内。
+  const hpScale = Math.min(1, 180 / Math.max(18, player.maxHealth * 22 - 4));
+  const beadW = `${14 * hpScale}px`;
+  const beadH = `${18 * hpScale}px`;
+  const hpGap = `${4 * hpScale}px`;
   // 珠列方向:损失的体力(空珠)在上方,剩余体力(满珠)在下方。
   // 满珠颜色按剩余体力比例分色:>50% 绿 / >25% 黄 / ≤25% 红(濒危警示)。
   const lostCount = Math.max(0, player.maxHealth - player.health);
@@ -761,7 +759,7 @@ const seatHpNumber = css`
   flex-shrink: 0;
   display: inline-block;
   line-height: 1;
-  font-size: 16px;
+  font-size: 24px;
   font-weight: 900;
   color: #ff5f52;
   text-shadow:
@@ -817,11 +815,11 @@ const seatDeadStamp = css`
     white-space: nowrap;
   }
 `;
-// 右缘体力珠列:垂直排列,骑在卡右边框上(right: -5px = 半珠宽);
+// 右缘体力珠列:垂直排列,骑在卡右边框上(right: -7px = 半珠宽);
 // 满珠绿渐变水滴(内高光+微光晕),空珠透明底 #444 边。尺寸由内联按 maxHealth 缩放
 const seatHpBeadCol = css`
   position: absolute;
-  right: -5px;
+  right: -7px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 4;

@@ -122,13 +122,11 @@ export function PlayerCardLargeImpl({
       phase: view.phase,
       pending: view.pending,
     });
-  // 体力珠缩放:整列布局高度 = 17N−3(N=maxHealth),卡高 200px,仅 N ≥ 12(17×12−3=201>200)
-  // 才会溢出卡面,此时按 6/maxHealth 等比缩小珠体与间距(与座位卡 PlayerSeatView 同规则);
-  // N ≤ 11 沿用基础尺寸(标准 4 血场景无回归)。
-  const hpScale = p.maxHealth >= 12 ? 6 / p.maxHealth : 1;
-  const beadW = `${10 * hpScale}px`;
-  const beadH = `${14 * hpScale}px`;
-  const hpGap = `${3 * hpScale}px`;
+  // 与座位卡共用放大后的体力珠尺寸，高体力武将保持整列在卡面内。
+  const hpScale = Math.min(1, 180 / Math.max(18, p.maxHealth * 22 - 4));
+  const beadW = `${14 * hpScale}px`;
+  const beadH = `${18 * hpScale}px`;
+  const hpGap = `${4 * hpScale}px`;
   // 珠列方向与分色(与座位卡 PlayerSeatView 同规则):损失的体力(空珠)在上方,
   // 剩余体力(满珠)在下方;满珠颜色按剩余比例分色:>50% 绿 / >25% 黄 / ≤25% 红(濒危警示)。
   const lostCount = Math.max(0, p.maxHealth - p.health);
