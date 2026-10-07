@@ -7,18 +7,18 @@
 ```sh
 docker compose up -d --build
 docker compose ps
-curl -f http://127.0.0.1:8080/api/auth/me
+curl -f http://127.0.0.1:9527/api/auth/me
 ```
 
 Docker 构建自动运行 `pnpm resources:install`，从固定的上游提交下载并校验图片、音效及背景音乐，再构建页面。因此 GitHub 仓库无需包含被忽略的 `public/packs`，资源出处和许可见 [资源说明](../docs/resources-local.md)。Git 拉取包含本次代码修改；本机账号和对局数据不会上传。
 
-默认监听服务器本机 `127.0.0.1:8080`。有域名时，将服务器现有 HTTPS 反向代理指向该地址，API 的 SSE 连接需要关闭代理缓冲并设置较长读取超时。容器内 Nginx 已配置这些选项。站点需部署在域名根路径。
+默认监听所有 IPv4 网卡 `0.0.0.0:9527`，允许公网访问。服务器防火墙及云安全组需允许所有来源（`0.0.0.0/0`）访问 TCP 9527，浏览器访问 `http://服务器公网IP:9527`。有域名时，将服务器现有 HTTPS 反向代理指向本机 `127.0.0.1:9527`，API 的 SSE 连接需要关闭代理缓冲并设置较长读取超时。容器内 Nginx 已配置这些选项。站点需部署在域名根路径。
 
-如果先通过 IP 和端口访问，在项目根目录新建 `.env`：
+默认已可通过 IP 和端口访问。如果之前在项目 `.env` 中设置过其他端口或本机监听地址，请更新为：
 
 ```dotenv
 SGS_BIND_ADDRESS=0.0.0.0
-SGS_HTTP_PORT=8080
+SGS_HTTP_PORT=9527
 ```
 
 再运行 `docker compose up -d`，并在服务器防火墙/云安全组开放选择的端口。

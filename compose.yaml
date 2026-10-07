@@ -25,7 +25,7 @@ services:
       target: web
     restart: unless-stopped
     ports:
-      - "${SGS_BIND_ADDRESS:-127.0.0.1}:${SGS_HTTP_PORT:-8080}:80"
+      - "${SGS_BIND_ADDRESS:-0.0.0.0}:${SGS_HTTP_PORT:-9527}:80"
     depends_on:
       game:
         condition: service_healthy
