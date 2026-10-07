@@ -1,5 +1,23 @@
 # 服务器部署
 
+## 直接用 pnpm 启动
+
+服务器需要 Node.js 24 和 pnpm。你的仓库已克隆到 `/opt/sanguosha` 时，先停止原来的进程，再执行：
+
+```sh
+cd /opt/sanguosha
+git pull --ff-only
+pnpm install --frozen-lockfile
+pnpm resources:install
+pnpm dev
+```
+
+默认监听 `0.0.0.0:9527`，访问 `http://服务器公网IP:9527`。服务器防火墙和云安全组需允许所有来源访问 TCP 9527。若系统设置过 PORT/HOST，可显式使用 `pnpm dev --host 0.0.0.0 --port 9527`。
+
+资源安装会下载固定版本的武将图片、卡牌图片、音效和背景音乐，下载成功后保留在本地，普通代码更新不必重新安装资源。数据仍保存在项目的 `data/` 中。`pnpm dev` 在前台运行，关闭终端会结束进程；需要关闭 SSH 后继续运行可用 tmux 管理终端会话。
+
+## 可选：Docker Compose
+
 服务器需 Linux、Docker Engine、Docker Compose 插件，并能访问 npm、GitHub API 与 raw.githubusercontent.com。
 
 将仓库克隆到一个新目录后，在仓库根目录运行：

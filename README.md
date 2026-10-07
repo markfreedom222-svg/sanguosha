@@ -13,8 +13,9 @@
 ## 快速开始
 
 ```bash
-pnpm install
-pnpm dev          # 启动开发服务器 (http://localhost:3930)
+pnpm install --frozen-lockfile
+pnpm resources:install  # 下载图片、音效及背景音乐
+pnpm dev          # 启动：0.0.0.0:9527，可通过服务器公网 IP 访问
 ```
 
 ## 命令
@@ -98,4 +99,4 @@ Plugin 包 `sanguosha-agent-plugin` 自包含玩家向 skill + sanguosha MCP ser
 
 ## 当前版本服务器部署
 
-服务器拉取仓库后可用 Docker Compose 启动，构建时自动下载固定版本的图片和音频资源。完整步骤见 [服务器部署说明](deploy/README.md)，资源来源与许可见 [资源说明](docs/resources-local.md)。
+服务器拉取仓库后可直接用 `pnpm dev` 启动，默认监听 `0.0.0.0:9527`；首次运行前执行 `pnpm resources:install` 安装图片和音频。Docker Compose 是可选方式。完整步骤见 [服务器部署说明](deploy/README.md)，资源来源与许可见 [资源说明](docs/resources-local.md)。

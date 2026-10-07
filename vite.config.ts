@@ -44,7 +44,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: parseInt(process.env.PORT ?? '3930'),
-    host: process.env.HOST ?? true,
+    port: parseInt(process.env.PORT ?? '9527'),
+    host: process.env.HOST ?? '0.0.0.0',
   },
 });
