@@ -113,6 +113,7 @@ export async function sseStreamHandler(c: Context): Promise<Response> {
   // playerId 一律取会话 userId;调试房间保持游客模型(queryPlayerId 或自动生成)。
   let playerId: string;
   let displayName: string | null = null;
+  let username: string | null = null;
   if (!room.isDebug) {
     if (!extractSessionToken(c)) {
       return c.json({ error: '请先登录', code: 'AUTH_REQUIRED' }, 401);
@@ -123,6 +124,7 @@ export async function sseStreamHandler(c: Context): Promise<Response> {
     }
     playerId = user.id;
     displayName = user.displayName;
+    username = user.username;
   } else {
     playerId = queryPlayerId ?? generatePlayerId();
   }
@@ -149,6 +151,8 @@ export async function sseStreamHandler(c: Context): Promise<Response> {
   ) {
     return c.json({ error: '你不在本房间中', code: 'NOT_MEMBER' }, 403);
   }
+
+  if (username) (room.playerUsernames ??= new Map()).set(playerId, username);
 
   return streamSSE(c, async (stream) => {
     try {

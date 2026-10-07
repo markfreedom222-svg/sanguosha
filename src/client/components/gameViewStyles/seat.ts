@@ -36,7 +36,7 @@ export const seatArcSlot = css`
   display: flex;
   flex-direction: column;
   gap: 3px;
-  z-index: 2;
+  z-index: 4;
 `;
 export const metaText = css`
   display: inline-flex;
@@ -91,24 +91,31 @@ export const seatCardTargeted = css`
 // 处理区:游戏中央的一排小卡
 export const processingRow = css`
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
   gap: 6px;
   margin: 6px auto;
   padding: 6px 12px;
   background: rgba(231, 126, 34, 0.14);
   border: 1px dashed #e67e22;
   border-radius: 8px;
-  max-width: 480px;
-  font-size: 12px;
-  justify-content: center;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 16px;
+  justify-content: flex-start;
+  scrollbar-width: thin;
   box-shadow: 0 2px 12px rgba(230, 126, 34, 0.2);
 `;
 export const processingLabel = css`
+  flex-shrink: 0;
   color: #e67e22;
   font-weight: bold;
 `;
 export const processingTag = css`
+  flex-shrink: 0;
+  white-space: nowrap;
   display: inline-block;
   padding: 1px 6px;
   border-radius: 4px;
@@ -120,7 +127,7 @@ export const processingTag = css`
 // 处理区牌上的使用者名(小号白字,前面带·分隔)
 export const processingOwner = css`
   color: #f1c40f;
-  font-size: 10px;
+  font-size: 14px;
   margin-right: 4px;
   font-weight: normal;
 `;
@@ -128,7 +135,7 @@ export const processingCardName = css`
   margin-right: 2px;
 `;
 export const processingSuit = css`
-  font-size: 10px;
+  font-size: 14px;
   opacity: 0.85;
 `;
 // 弃牌堆:小卡背图标 + 计数(与牌堆药丸同语言,红色系区分)

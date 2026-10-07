@@ -91,7 +91,7 @@ export function SeatArcLayout(props: SeatArcLayoutProps) {
       {orderedPlayers.slice(1).length > 0 &&
         orderedPlayers.slice(1).map((player, i) => {
           const totalOthers = orderedPlayers.length - 1;
-          const realIdx = view.players.findIndex((p) => p.name === player.name);
+          const realIdx = player.index;
           const { leftPct, topPct } = arcLayout(totalOthers, i);
           // 门控集中在 deadline 派生这一处(渲染条件 seatDeadline !== null 不动),
           // 翻牌动画期间所有座位条统一隐藏,动画结束自动恢复为真实剩余时间。
@@ -105,7 +105,7 @@ export function SeatArcLayout(props: SeatArcLayoutProps) {
             : { distance: null, reason: null };
           return (
             <div
-              key={player.name}
+              key={player.index}
               className={styles.seatArcSlot}
               style={
                 { '--seat-left': `${leftPct}%`, '--seat-top': `${topPct}%` } as React.CSSProperties

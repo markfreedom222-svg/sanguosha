@@ -205,17 +205,21 @@ export const battleField = css`
   }
 `;
 
-/** 中央牌堆/处理区 + 出牌历史条(须高于 ActionOverlay 9998,否则被盖住) */
+/** 处理区和出牌提示限制在顶排武将卡下方、操作坞上方的中央空位。 */
 export const centerTable = css`
   position: absolute;
-  top: 48%;
+  top: calc(var(--hero-card-h) + 92px);
+  bottom: 190px;
   left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10000;
-  width: min(560px, 92%);
+  transform: translateX(-50%);
+  z-index: 3;
+  width: min(560px, calc(100% - 440px));
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
   gap: 6px;
   pointer-events: none;
   & > * {
@@ -265,6 +269,11 @@ export const centerZoneInfo = css`
   align-items: center;
   gap: 4px;
   max-width: 100%;
+  flex: 0 0 140px;
+  min-width: 0;
+  max-height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
 `;
 
 /** 座位区底部操作坞:提示 / 倒计时 / 主按钮(贴 seatArcContainer 底边) */

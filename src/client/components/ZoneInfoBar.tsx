@@ -21,6 +21,7 @@ interface ZoneInfoBarImplProps {
 function ZoneInfoBarImpl(props: ZoneInfoBarImplProps) {
   const { view } = props;
   const procIds = view.zones?.processing ?? [];
+  if (procIds.length === 0) return null;
 
   // 处理区牌 → 使用者名映射:
   //   1) 优先用 settlementStack:每帧 frame.from 是发起者,frame.cards 是该帧内所有处理区牌。

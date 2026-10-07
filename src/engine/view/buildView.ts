@@ -168,6 +168,7 @@ export function buildView(state: GameState, viewer: number, debug = false): Game
       // 优先取昵称,武将名不会经 name 通道泄漏(角色保密由 character/skills 红化控制)。
       index: i,
       name: hideChar ? (p.nickname ?? p.name) : p.name,
+      username: p.username?.trim() ? p.username : p.nickname?.trim() ? p.nickname : `P${i + 1}`,
       character: hideChar ? '' : p.character,
       faction: hideChar ? undefined : p.faction,
       health: p.health,

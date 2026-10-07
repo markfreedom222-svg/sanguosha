@@ -807,7 +807,7 @@ export function GameViewComponentImpl({
                 </DevProfiler>
 
                 {/* 中央:处理区 + 出牌历史条(牌堆/弃牌计数已移至左下角 HUD) */}
-                <div className={styles.centerTable}>
+                <div className={styles.centerTable} data-testid="battle-center">
                   <ZoneInfoBar />
                   <PlayHistoryStrip items={playHistoryItems} />
                 </div>

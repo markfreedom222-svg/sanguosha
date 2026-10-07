@@ -449,6 +449,34 @@ describe('身份分配座次轮转 (multiplayer 非 debug)', () => {
     expect(hostIsLord).toBeLessThan(seeds);
   }, 30000);
 
+  it('card usernames follow rotated seats and survive hero names and reconnects', async () => {
+    const ids = ['h', 'a', 'b', 'c'];
+    const { room } = makeMultiplayerRoom(ids);
+    room.playerUsernames = new Map(ids.map((pid) => [pid, `account_${pid}`]));
+    const session = new GameSession(room, false, 99);
+    await session.startGame();
+    const state = getState(session) as GameState;
+    state.players.forEach((p, i) => { p.nickname = `显示昵称${i}`; p.name = `英雄${i}`; p.character = `英雄${i}`; });
+    for (const pid of ids) {
+      const seat = session.getPlayerName(pid)!;
+      expect(session.getDebugView()!.players[seat]).toMatchObject({ name: `英雄${seat}`, username: `account_${pid}` });
+    }
+    session.handleDisconnect('a');
+    const sink = new FakeSink();
+    expect(session.reconnectPlayer('a', sink)).toBe(true);
+    const baseline = sink.messages.find((m) => m.type === 'initialView');
+    expect(baseline?.type === 'initialView' && baseline.state.players[session.getPlayerName('a')!].username).toBe('account_a');
+    // 模拟重启后只剩持久化对局快照，仍能恢复账号名。
+    room.playerUsernames = undefined;
+    const restored = new GameSession(room, false, 99);
+    await restored.restoreState(state, state.actionLog);
+    for (const pid of ids) {
+      expect(restored.getDebugView()!.players[restored.getPlayerName(pid)!].username).toBe(`account_${pid}`);
+    }
+    await restored.destroy();
+    await session.destroy();
+  });
+
   it('chat uses the rotated game seat and freezes the matching username and hero', async () => {
     const { room } = makeMultiplayerRoom(['h', 'a', 'b', 'c']);
     const session = new GameSession(room, false, 99);

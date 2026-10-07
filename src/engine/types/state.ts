@@ -106,6 +106,8 @@ export interface PlayerState {
   name: string;
   /** 玩家昵称快照:分配武将会把 name 覆写为武将名,此处保留原昵称供选将期展示 */
   nickname?: string;
+  /** 登录账号用户名，独立于武将名和显示昵称。 */
+  username?: string;
   character: string;
   /** 体力（可负）。角色受到过量伤害后体力可小于 0；濒死期间 health ≤ 0。
    *  区别于「体力值」= Math.max(0, health)（封底为 0，用于显示/手牌上限/已损失体力值等）。

@@ -14,6 +14,8 @@ export interface GameView {
   players: {
     index: number;
     name: string;
+    /** 卡顶账号用户名；旧录像无此字段时按座号显示。 */
+    username?: string;
     character: string;
     health: number;
     maxHealth: number;

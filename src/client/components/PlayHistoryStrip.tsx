@@ -1,7 +1,7 @@
 // src/client/components/PlayHistoryStrip.tsx
 // 对战区中央出牌历史条:FIFO 小牌 + 下方短标注(谁对谁 / 谁弃)。
 
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { css } from '@linaria/core';
 import { SUIT_COLOR } from './gameViewConstants';
 import { CardFace } from './CardFace';
@@ -12,14 +12,19 @@ export type PlayHistoryStripProps = {
 };
 
 function PlayHistoryStripImpl({ items }: PlayHistoryStripProps) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [items]);
   if (items.length === 0) return null;
   return (
-    <div className={strip} aria-label="出牌展示" data-play-history-count={items.length}>
+    <div ref={stripRef} className={strip} aria-label="出牌展示" data-play-history-count={items.length}>
       {items.map((it) => {
         return (
           <div key={it.id} className={slot}>
             <div className={cardFace} style={{ borderColor: SUIT_COLOR[it.card.suit ?? ''] ?? '#ccc' }}>
-              <CardFace name={it.card.name} suit={it.card.suit} rank={it.card.rank} size="small" />
+              <CardFace name={it.card.name} suit={it.card.suit} rank={it.card.rank} size="normal" />
             </div>
             <div className={caption} title={it.caption}>
               {it.caption}
@@ -48,14 +53,17 @@ const strip = css`
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: flex-end;
-  justify-content: center;
-  gap: 6px;
-  max-width: min(720px, 96%);
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  flex: 0 1 auto;
   overflow-x: auto;
-  padding: 6px 8px;
+  padding: 4px 8px;
   border-radius: 8px;
   scrollbar-width: thin;
-  pointer-events: none;
+  pointer-events: auto;
 `;
 
 const slot = css`
@@ -70,9 +78,8 @@ const slot = css`
 const cardFace = css`
   position: relative;
   box-sizing: border-box;
-  min-width: 52px;
-  width: 60px;
-  height: 80px;
+  width: 72px;
+  height: 96px;
   padding: 0;
   border-radius: 6px;
   background: linear-gradient(135deg, #3a3048 0%, #1e1a28 100%);
@@ -83,11 +90,18 @@ const cardFace = css`
 `;
 
 const caption = css`
-  font-size: 10px;
+  font-size: 16px;
+  font-weight: 700;
   color: #e8d5a3;
-  max-width: 72px;
+  width: 100px;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+  min-height: 2.4em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
   text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);

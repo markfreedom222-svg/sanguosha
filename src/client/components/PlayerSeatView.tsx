@@ -134,6 +134,7 @@ function PlayerSeatViewImpl({
   const isUntargetable = needsTarget && !isDead && !isTargetable;
   // 势力信息
   const displayChar = player.character;
+  const accountName = player.username?.trim() ? player.username : `P${index + 1}`;
   const charInfo = displayChar ? getCharacterMeta(displayChar) : undefined;
   const faction = charInfo?.faction ?? '群';
   const factionColor = FACTION_BG[faction] ?? '#8e44ad';
@@ -202,7 +203,9 @@ function PlayerSeatViewImpl({
           player.identityHidden !== false && <span className={cx(seatIdentityStamp, seatIdentityHidden)}>暗</span>
         )}
         <span className={seatIndexBadge}>#{index + 1}</span>
-        <span className={seatName}>{player.name.slice(0, 6)}</span>
+        <span className={seatName} title={accountName}>
+          {accountName}
+        </span>
         <div className={seatBadgeGroup}>
           {isPerspective && <span className={youBadge}>我</span>}
           {isCurrentPlayer && <span className={turnBadge}>回合</span>}

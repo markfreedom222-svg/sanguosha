@@ -40,6 +40,8 @@ export interface Room {
   /** 成员显示名:playerId → 用户昵称(登录用户 displayName;调试房间不维护)。
    *  playerId 是稳定 userId,展示层一律经此映射取名。 */
   playerNames: Map<string, string>;
+  /** 登录账号用户名，与可修改的显示昵称分开保存。 */
+  playerUsernames?: Map<string, string>;
   /** 待处理座位交换请求：requesterId → { targetSeat, expiresAt, timer } */
   pendingSeatSwaps: Map<string, { targetSeat: number; expiresAt: number; timer: ReturnType<typeof setTimeout> }>;
   /** 近期离开成员表：playerId → { at: 离开时刻 ms, role: 离开时身份 }。
@@ -343,6 +345,7 @@ export function leaveRoom(
   // 仍在旁观(如玩家身份被顶替后转旁观)则保留显示名;彻底离开才清除
   if (!room.spectators.has(playerId)) {
     room.playerNames.delete(playerId);
+    room.playerUsernames?.delete(playerId);
     // 断线路径记入宽限表：EventSource 自动重连只打 stream 端点、不重走 POST /join，
     // 若无此记录会被 SSE 成员门禁 403 拒绝且永久失败(见 Room.recentlyLeft 注释)。
     if (reason === 'disconnect') recordRecentLeave(room, playerId, 'player');
@@ -402,6 +405,7 @@ export function kickPlayer(
     room.pendingViewRequests.delete(targetPlayerId);
   }
   room.playerNames.delete(targetPlayerId);
+  room.playerUsernames?.delete(targetPlayerId);
 
   roomChangeHandler?.(room, 'update');
   return { room, kickedSink };
@@ -783,6 +787,7 @@ export function removeSpectator(
   // 仍在座位上(身份互斥的另一半不存在,防御性判断)则保留;否则彻底清除
   if (!room.seats.includes(spectatorId)) {
     room.playerNames.delete(spectatorId);
+    room.playerUsernames?.delete(spectatorId);
     if (reason === 'disconnect') recordRecentLeave(room, spectatorId, 'spectator');
   }
   return room;

@@ -65,6 +65,7 @@ function marksEqual(a: Player['marks'], b: Player['marks']): boolean {
 export function playerVisibleEqual(a: Player, b: Player): boolean {
   return (
     a.name === b.name &&
+    a.username === b.username &&
     a.character === b.character &&
     a.health === b.health &&
     a.maxHealth === b.maxHealth &&

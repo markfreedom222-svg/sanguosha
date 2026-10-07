@@ -351,6 +351,7 @@ describe('房间登录强制', () => {
     };
     expect(playerId).toBe(host.userId);
     expect(playerName).toBe(host.displayName);
+    expect(getRoom(roomId)!.playerUsernames?.get(host.userId)).toBe('roomhost1');
 
     // room_state 与列表投影 playerNames
     const state = buildRoomState(getRoom(roomId)!) as {
@@ -389,6 +390,7 @@ describe('房间登录强制', () => {
     expect(room.seats.includes(guest.userId)).toBe(true);
     expect(room.seats.includes('someone-else')).toBe(false);
     expect(room.playerNames.get(guest.userId)).toBe(guest.displayName);
+    expect(room.playerUsernames?.get(guest.userId)).toBe('roomguest2');
   });
 
   it('Bearer token 与 Cookie 等价(程序化通道)', async () => {

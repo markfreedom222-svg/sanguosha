@@ -124,6 +124,18 @@ export class GameSession {
     return out;
   }
 
+  /** 用游戏座次保存账号名，选将覆写 name 时不会改变卡顶用户名。 */
+  private assignUsernames(state: GameState, offset: number, fallback?: (string | undefined)[]): void {
+    let k = 0;
+    for (const pid of this.room.seats) {
+      if (pid === null) continue;
+      if (k >= state.players.length) break;
+      const seat = (k + offset) % state.players.length;
+      state.players[seat].username = this.room.playerUsernames?.get(pid) ?? fallback?.[seat];
+      k++;
+    }
+  }
+
   /** 用持久化数据恢复:create(config) → bootstrap → 重放 actionLog,确定性重建完整 state。
    *  config 从 state(rngSeed/playerCount)+ 房间武将池 重构。 */
   async restoreState(state: GameState, actionLog: ActionLogEntry[] = []): Promise<void> {
@@ -131,7 +143,7 @@ export class GameSession {
     // config 重构:seed 来自 state,playerCount 从 state.players,characters 用全局表,
     // mode 用房间配置(与开局一致;state.config.mode 由 create 写入快照,二者一致)
     const playerCount = state.players.length;
-    const offset = computeSeatRotation(state.rngSeed, playerCount);
+    const offset = state.seatRotation ?? computeSeatRotation(state.rngSeed, playerCount);
     const config: GameConfig = {
       characters: resolveCharPool(this.room.config.charPool),
       playerCount,
@@ -144,6 +156,7 @@ export class GameSession {
       playerNames: this.seatDisplayNames(playerCount, offset, state.players.map((p) => p.name)),
     };
     const fresh = create(config);
+    this.assignUsernames(fresh, offset, state.players.map((p) => p.username));
     // 注入虚拟时钟:重放期间超时按 actionLog 时间戳确定性推导,不依赖真实系统时间。
     // startedAt 归零对齐 VirtualClock(相对时间从 0 起)。
     fresh.clock = new VirtualClock();
@@ -154,7 +167,7 @@ export class GameSession {
     fresh.clock = new RealClock();
     this.state = fresh;
     // 恢复座次轮转偏移:与 startGame 一致(同 seed 派生),保证重连后视角不错位。
-    this.state.seatRotation = computeSeatRotation(config.seed, this.state.players.length);
+    this.state.seatRotation = offset;
     this.actionLog = fresh.actionLog;
     this.attachStateListener();
 
@@ -202,6 +215,7 @@ export class GameSession {
       playerNames: this.seatDisplayNames(count, seatOffset),
     };
     this.state = create(config);
+    this.assignUsernames(this.state, seatOffset);
     // 座次轮转偏移:决定主公(游戏座次 0)对应哪个物理座位。在 bootstrap 之前同步设置,
     // 供下方 playerId↔座次映射读取——房主不再恒为主公。随 seed 确定,可复现。
     this.state.seatRotation = computeSeatRotation(config.seed, config.playerCount);
@@ -762,6 +776,9 @@ export class GameSession {
     this.disconnectedAt.delete(playerId);
     this.room.players.set(playerId, sink);
     const viewer = this.playerNames.get(playerId);
+    if (viewer !== undefined && this.state.players[viewer]) {
+      this.state.players[viewer].username = this.room.playerUsernames?.get(playerId) ?? this.state.players[viewer].username;
+    }
     const differential =
       this.canServeDifferential(lastSeq) &&
       viewer !== undefined &&
@@ -813,7 +830,7 @@ export class GameSession {
     if (seatIndex === undefined || !player) return undefined;
     return {
       seatIndex,
-      username: this.room.playerNames.get(playerId) ?? player.nickname ?? playerId,
+      username: player.username ?? this.room.playerNames.get(playerId) ?? player.nickname ?? playerId,
       // 聊天广播给全房间，选将期间不泄露尚未公开的英雄。
       character: this.state?.charSelecting ? '' : player.character,
     };

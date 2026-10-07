@@ -204,7 +204,9 @@ export function PlayerCardLargeImpl({
         data-player-name={p.name}
       >
         <div className={styles.playerCardHeaderTop}>
-          <span className={styles.playerCardName}>{p.name}</span>
+          <span className={styles.playerCardName} title={p.username?.trim() ? p.username : `P${perspectiveIdx + 1}`}>
+            {p.username?.trim() ? p.username : `P${perspectiveIdx + 1}`}
+          </span>
           <div className={styles.playerCardBadges}>
             {perspectiveIdx === viewer && <span className={styles.playerCardBadgeYou}>我</span>}
             {isPerspectiveTurn && <span className={styles.playerCardBadgeTurn}>回合</span>}

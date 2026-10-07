@@ -171,6 +171,7 @@ export function applyRestRoutes(app: Hono): void {
         passwordHash,
         user.displayName,
       );
+      (room.playerUsernames ??= new Map()).set(user.id, user.username);
       playerRoomMap.set(user.id, room.id);
       return c.json({ roomId: room.id, playerId: user.id, playerName: user.displayName });
     } catch (err) {
@@ -194,12 +195,14 @@ export function applyRestRoutes(app: Hono): void {
 
     // 已在房间中的玩家重新加入（刷新页面/重连 SSE）:直接返回成功
     if (room.players.has(playerId)) {
+      (room.playerUsernames ??= new Map()).set(playerId, user.username);
       return c.json({ roomId: id, playerId, playerName: user.displayName });
     }
 
     // 断线重连：玩家已在 seats 中但 SSE 断开，允许在任何状态下重连（含游戏进行中）
     // SSE handler 会直接设置 room.players 并调用 reconnectPlayer 恢复游戏视图
     if (room.seats.includes(playerId)) {
+      (room.playerUsernames ??= new Map()).set(playerId, user.username);
       playerRoomMap.set(playerId, id);
       return c.json({ roomId: id, playerId, playerName: user.displayName });
     }
@@ -228,6 +231,7 @@ export function applyRestRoutes(app: Hono): void {
     // 加入房间（null sink 占位，SSE 连接时替换）
     const joined = joinRoom(id, playerId, nullSink(), user.displayName);
     if (!joined) return c.json({ error: '加入失败' }, 400);
+    (room.playerUsernames ??= new Map()).set(playerId, user.username);
     playerRoomMap.set(playerId, id);
 
     broadcastMessage(room, { type: 'player_joined', playerId }, playerId);
