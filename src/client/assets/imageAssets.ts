@@ -31,10 +31,17 @@ export function getCharacterImage(name: string): string | null {
 }
 
 /** 卡牌图 URL。需同时具备 name + suit + rank。扩展名由 manifest 的 file 字段决定。 */
-export function getCardImage(card: { name: string; suit?: string; rank?: string }): string | null {
+export function getCardImage(card: { name: string; suit?: string; rank?: string; damageType?: string }): string | null {
   const sub = NAME_TO_SUB.get(card.name);
   if (!sub || !card.suit || !card.rank) return null;
-  return resourceManager.get(`card/${card.name}-${card.rank}-${card.suit}`);
+  const variant = card.name === '杀' && card.damageType === '火焰' ? '火杀'
+    : card.name === '杀' && card.damageType === '雷电' ? '雷杀' : null;
+  if (variant) {
+    const art = resourceManager.get(`card/art/${variant}`);
+    if (art) return art;
+  }
+  return resourceManager.get(`card/${card.name}-${card.rank}-${card.suit}`)
+    ?? resourceManager.get(`card/art/${card.name}`);
 }
 
 /** 装备区缩略图 URL。 */

@@ -38,6 +38,7 @@ function GameHeaderImpl({
   return (
     <div className={styles.headerBar}>
       <div className={styles.headerCenter}>
+        <a className={styles.backBtn} href="/">← 返回主页</a>
         <span
           className={cx(styles.roundBadge, animTurnVersion > 0 && styles.turnGlowing)}
           key={`turn-${animTurnVersion}`}

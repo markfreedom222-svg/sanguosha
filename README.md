@@ -95,3 +95,7 @@ Plugin 包 `sanguosha-agent-plugin` 自包含玩家向 skill + sanguosha MCP ser
 ### 本仓库开发
 
 本仓库自身开发用源码直跑（`pnpm mcp:serve`，连 `ws://localhost:3930/ws`），配置见仓库根 `.mcp.json`。发布 plugin npm 包用 `pnpm build:plugin` 打包 skill + MCP 为单文件。
+
+## 当前版本服务器部署
+
+服务器拉取仓库后可用 Docker Compose 启动，构建时自动下载固定版本的图片和音频资源。完整步骤见 [服务器部署说明](deploy/README.md)，资源来源与许可见 [资源说明](docs/resources-local.md)。

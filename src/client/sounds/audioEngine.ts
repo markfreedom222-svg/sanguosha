@@ -14,7 +14,7 @@
 //     后续不再发请求,console 不输出任何 error/warn(避免刷屏)。
 //   - 快速连发(如一帧内多个事件)可重叠播放:每次 play 创建独立 BufferSource。
 //   - 非浏览器环境(node 测试/jsdom 无 AudioContext)安全降级:所有方法 no-op。
-//   - 同一音效反复播放时,对 playbackRate 加 ±3% 随机抖动,缓解重复听感疲劳。
+//   - 操作音效轻微变调(±2%);牌名/死亡语音保持原音高。120ms 内同文件不重复播放。
 //   - unlock 后可预加载高频音效(flip/出杀/闪避等),消除首次播放的 fetch+解码延迟。
 
 import { resolveSoundUrl } from './soundMap';
@@ -25,10 +25,10 @@ type BufferEntry =
   | { status: 'ok'; buffer: AudioBuffer }
   | { status: 'missing' }; // 加载失败(404/解码错误),永久跳过
 
-/** buffer 缓存上限,超过后清空最早的(防止无限增长)。音频文件数量有限(约30个),很少触发。 */
+/** 按 URL 缓存最多 64 个音频，避免共享文件重复解码。 */
 const BUFFER_CACHE_LIMIT = 64;
 
-class AudioEngine {
+export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   /** 是否已通过用户交互解锁(AudioContext 已创建且 resume) */
@@ -37,8 +37,10 @@ class AudioEngine {
   private volume = 1;
   /** 是否静音 */
   private muted = false;
-  /** soundId → buffer 加载状态 */
+  /** resolved URL → buffer 加载状态 */
   private bufferCache = new Map<string, BufferEntry>();
+  /** Cache by resolved URL so shared clips decode once and pack changes take effect. */
+  private lastStarted = new Map<string, number>();
 
   /**
    * 解锁音频:在首次用户交互(click/keydown)时调用。
@@ -119,20 +121,23 @@ class AudioEngine {
     const evVol = effectVolume !== undefined ? Math.max(0, Math.min(1, effectVolume)) : 1;
 
     // 同步路径:buffer 已就绪 → 立即播放
-    const cached = this.bufferCache.get(soundId);
+    const requestedAt = Date.now();
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+    const cached = this.bufferCache.get(url);
     if (cached?.status === 'ok') {
-      this.startSource(cached.buffer, evVol);
+      this.startSource(cached.buffer, evVol, soundId, url);
       return;
     }
     if (cached?.status === 'missing') return; // 负缓存:跳过
 
     // 异步路径:pending(可能由 preload 触发)或首次请求 → 确保加载,就绪后补播本次
-    const promise = this.ensureBuffer(soundId, url);
+    const promise = this.ensureBuffer(url);
     if (promise) {
       void promise.then((buffer) => {
-        // 加载成功后立即补播本次(用户延迟感知在可接受范围)
-        if (buffer && this.unlocked && !this.muted) {
-          this.startSource(buffer, evVol);
+      // Skip stale action sounds and resources changed during loading.
+        if (buffer && this.unlocked && !this.muted && Date.now() - requestedAt <= 500
+          && resolveSoundUrl(soundId) === url) {
+          this.startSource(buffer, evVol, soundId, url);
         }
       });
     }
@@ -147,33 +152,43 @@ class AudioEngine {
     if (!this.unlocked || !this.ctx) return; // decodeAudioData 依赖 ctx
     for (const soundId of soundIds) {
       const url = resolveSoundUrl(soundId);
-      if (url) this.ensureBuffer(soundId, url);
+      if (url) this.ensureBuffer(url);
     }
   }
 
   /** 创建并启动一个 BufferSource(per-event gain → master gain → destination) */
-  private startSource(buffer: AudioBuffer, effectVolume: number): void {
+  private startSource(buffer: AudioBuffer, effectVolume: number, soundId: string, url: string): void {
     if (!this.ctx || !this.masterGain) return;
+    const now = Date.now();
+    const previous = this.lastStarted.get(url);
+    if (previous !== undefined && now - previous < 120) return;
+    if (this.lastStarted.size >= BUFFER_CACHE_LIMIT) {
+      const oldest = this.lastStarted.keys().next().value;
+      if (oldest !== undefined) this.lastStarted.delete(oldest);
+    }
+    this.lastStarted.set(url, now);
     try {
       const src = this.ctx.createBufferSource();
       src.buffer = buffer;
-      // 随机变调(±3%):同一音效反复播放时轻微抖动 playbackRate,缓解重复听感疲劳。
-      // 幅度约 50 音分(半个半音),低于人耳对瞬时音高的可辨阈,听感自然、不改变语义。
-      src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.06;
-      if (effectVolume >= 1) {
-        // per-event 音量为 1 时直接接 master,省一个 GainNode
-        src.connect(this.masterGain);
-      } else {
-        const evtGain = this.ctx.createGain();
-        evtGain.gain.value = effectVolume;
-        src.connect(evtGain);
-        evtGain.connect(this.masterGain);
-      }
+      // Texture variation applies only to effects; speech keeps its original pitch.
+      const isVoice = soundId.startsWith('card/') || soundId.startsWith('death/');
+      src.playbackRate.value = isVoice ? 1 : 1 + (Math.random() - 0.5) * 0.04;
+      const evtGain = this.ctx.createGain();
+      const start = this.ctx.currentTime;
+      const duration = buffer.duration / src.playbackRate.value;
+      const fade = Math.min(0.008, duration / 4);
+      evtGain.gain.setValueAtTime(0, start);
+      evtGain.gain.linearRampToValueAtTime(effectVolume, start + fade);
+      evtGain.gain.setValueAtTime(effectVolume, start + Math.max(fade, duration - fade));
+      evtGain.gain.linearRampToValueAtTime(0, start + duration);
+      src.connect(evtGain);
+      evtGain.connect(this.masterGain);
       src.start();
       // 自动清理:播放结束后断开(GC 友好)
       src.onended = () => {
         try {
           src.disconnect();
+          evtGain.disconnect();
         } catch {
           /* 已断开 */
         }
@@ -190,18 +205,20 @@ class AudioEngine {
    * - 未缓存:启动 loadBuffer,缓存 pending,挂载「缓存写入」then,返回新 promise。
    * 调用方(play)自行在 promise 上挂「补播」then,从而 preload 只加载不播放、不丢音。
    */
-  private ensureBuffer(soundId: string, url: string): Promise<AudioBuffer | null> | null {
-    const cached = this.bufferCache.get(soundId);
+  private ensureBuffer(url: string): Promise<AudioBuffer | null> | null {
+    const cached = this.bufferCache.get(url);
     if (cached?.status === 'ok' || cached?.status === 'missing') return null;
     if (cached?.status === 'pending') return cached.promise;
-    const promise = this.loadBuffer(soundId, url);
-    this.bufferCache.set(soundId, { status: 'pending', promise });
+    const promise = this.loadBuffer(url);
+    this.bufferCache.set(url, { status: 'pending', promise });
     // 缓存上限保护
     if (this.bufferCache.size > BUFFER_CACHE_LIMIT) {
       this.evictOldest();
     }
     void promise.then((buffer) => {
-      this.bufferCache.set(soundId, buffer ? { status: 'ok', buffer } : { status: 'missing' });
+      const current = this.bufferCache.get(url);
+      if (current?.status !== 'pending' || current.promise !== promise) return;
+      this.bufferCache.set(url, buffer ? { status: 'ok', buffer } : { status: 'missing' });
     });
     return promise;
   }
@@ -210,7 +227,7 @@ class AudioEngine {
    * 加载并解码音频 buffer。
    * 失败(404/网络错误/解码失败)返回 null,不输出 console.error/warn。
    */
-  private async loadBuffer(soundId: string, url: string): Promise<AudioBuffer | null> {
+  private async loadBuffer(url: string): Promise<AudioBuffer | null> {
     if (!this.ctx) return null;
     try {
       const res = await fetch(url);
@@ -229,7 +246,8 @@ class AudioEngine {
    * 供 useSoundPlayback 计算串行间隔,避免动作音效叠音。
    */
   getDuration(soundId: string): number | undefined {
-    const entry = this.bufferCache.get(soundId);
+    const url = resolveSoundUrl(soundId);
+    const entry = url ? this.bufferCache.get(url) : undefined;
     return entry?.status === 'ok' ? entry.buffer.duration : undefined;
   }
 
@@ -244,6 +262,7 @@ class AudioEngine {
   /** 清空所有缓存 buffer(测试/重置用) */
   clearCache(): void {
     this.bufferCache.clear();
+    this.lastStarted.clear();
   }
 }
 

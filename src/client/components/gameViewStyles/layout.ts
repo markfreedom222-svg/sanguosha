@@ -48,6 +48,8 @@ export const headerBar = css`
 /* ── 顶栏按钮体系:统一幽灵药丸(ghost pill) ──
    形状/字号/高度一致,仅以色相区分语义:中性(退出/查看)/蓝(视角)/绿(自动切换/快照)。 */
 export const backBtn = css`
+  text-decoration: none;
+  white-space: nowrap;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   padding: 3px 12px;

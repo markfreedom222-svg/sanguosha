@@ -13,7 +13,7 @@ export const BASE_PACK_FALLBACK_MANIFEST: Manifest = {
   name: '基础资源包',
   version: '1.0.0',
   author: '内置',
-  description: '游戏自带的基础视听资源（图片/音频/特效）',
+  description: '尚未安装视听资源，使用文字牌面且不播放音效。',
   priority: 0,
   resources: [], // 空：实际资源由文件系统扫描填充
 };

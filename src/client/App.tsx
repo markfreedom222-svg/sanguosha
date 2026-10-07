@@ -7,6 +7,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { globalReset } from './theme';
 import { useAudioUnlock } from './hooks/useAudioUnlock';
 import { useResourcePacks } from './hooks/useResourcePacks';
+import { useSoundSettings } from './hooks/useSoundSettings';
 
 // 路由级代码分割：仅顶层页面组件做 lazy 加载，共享组件由页面 chunk 内部静态导入。
 const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
@@ -18,6 +19,7 @@ const ReplayPage = lazy(() => import('./pages/ReplayPage').then((m) => ({ defaul
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 
 export function App() {
+  useSoundSettings();
   // 首次用户交互后解锁 AudioContext(浏览器自动播放策略要求)
   useAudioUnlock();
   // 初始化 ResourceManager，触发 fetch /packs/index.json

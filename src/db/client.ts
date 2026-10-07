@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import * as schema from './schema';
 import type { DBConfig } from './types';
+import { mkdir } from 'node:fs/promises';
 
 /** 统一数据库句柄:Drizzle ORM 实例 + close() 清理连接。 */
 type DB = {
@@ -16,6 +17,9 @@ type DB = {
  * - 传 dataDir → 持久化到磁盘;省略 → 内存数据库(测试用)。
  */
 async function createDB(config: DBConfig): Promise<DB> {
+  if (config.dataDir && config.dataDir !== ':memory:') {
+    await mkdir(config.dataDir, { recursive: true });
+  }
   const connection =
     config.dataDir && config.dataDir !== ':memory:' ? { dataDir: config.dataDir } : undefined;
   const db = drizzle({ schema, connection });

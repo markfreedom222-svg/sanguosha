@@ -79,9 +79,9 @@ export function RoomConfigSection({ editConfig, onFieldChange, onCommit }: RoomC
                   onCommit({ ...editConfig, charPool: v });
                 }}
               >
-                <option value="standard">标准池 (~32人)</option>
-                <option value="extended">扩展池</option>
-                <option value="all">全武将 (60人)</option>
+                <option value="standard">标准池（32人）</option>
+                <option value="extended">扩展池（不含界武将）</option>
+                <option value="all">全武将（含界武将）</option>
               </select>
             </div>
             <div>

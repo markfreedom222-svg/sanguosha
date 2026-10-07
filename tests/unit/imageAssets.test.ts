@@ -32,6 +32,9 @@ const testIndex: PacksIndex = {
         // 音效资源（resolveSoundUrl 测试）
         { id: 'sound/flip', type: 'audio' },
         { id: 'sound/card/杀', type: 'audio' },
+        { id: 'card/art/杀', type: 'image', file: 'art/slash.png' },
+        { id: 'card/art/火杀', type: 'image', file: 'art/fire_slash.png' },
+        { id: 'card/art/雷杀', type: 'image', file: 'art/thunder_slash.png' },
       ],
     },
   }],
@@ -69,6 +72,11 @@ describe('getCardImage', () => {
     expect(getCardImage({ name: '杀', suit: '♠', rank: '10' })).toBe('/packs/base/card/杀-10-♠.jpg');
     expect(getCardImage({ name: '闪', suit: '♥', rank: '2' })).toBe('/packs/base/card/闪-2-♥.jpg');
   });
+  it('uses shared artwork for unregistered physical cards and distinguishes elemental slash', () => {
+    expect(getCardImage({ name: '杀', suit: '♣', rank: '3' })).toBe('/packs/base/art/slash.png');
+    expect(getCardImage({ name: '杀', suit: '♥', rank: '4', damageType: '火焰' })).toBe('/packs/base/art/fire_slash.png');
+    expect(getCardImage({ name: '杀', suit: '♠', rank: '4', damageType: '雷电' })).toBe('/packs/base/art/thunder_slash.png');
+  });
 
   it('routes equipment cards with default .png', () => {
     expect(getCardImage({ name: '丈八蛇矛', suit: '♠', rank: 'Q' })).toBe('/packs/base/card/丈八蛇矛-Q-♠.png');
@@ -93,8 +101,8 @@ describe('getCardImage', () => {
   });
 
   it('returns null for registered card name but unregistered suit-rank combo', () => {
-    // '杀' 在 NAME_TO_SUB 中（basic），但 card/杀-3-♣ 未在 manifest 注册
-    expect(getCardImage({ name: '杀', suit: '♣', rank: '3' })).toBeNull();
+    // Neither a physical-card image nor shared artwork is registered for 桃.
+    expect(getCardImage({ name: '桃', suit: '♣', rank: '3' })).toBeNull();
   });
 });
 

@@ -60,7 +60,7 @@ describe('useSoundPlayback', () => {
     }
   });
 
-  it('氛围音效立即响(fire-and-forget),不串行等待', () => {
+  it('回合和阶段切换不发提示音', () => {
     vi.useFakeTimers();
     try {
       renderHook((ing) => useSoundPlayback(ing), {
@@ -70,14 +70,13 @@ describe('useSoundPlayback', () => {
           q(3, ev('phase_start')),
         ] as QueuedEvent[],
       });
-      // 三个氛围音效全部立即响,无需等待
-      expect(playMock).toHaveBeenCalledTimes(3);
+      expect(playMock).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('氛围与动作混合:氛围立即响,动作进串行队列', () => {
+  it('切换事件不影响卡牌动作音效', () => {
     vi.useFakeTimers();
     try {
       renderHook((ing) => useSoundPlayback(ing), {
@@ -86,8 +85,8 @@ describe('useSoundPlayback', () => {
           q(2, ev('flip')),
         ] as QueuedEvent[],
       });
-      // 氛围立即响 + 动作队列首项立即响 = 2 次
-      expect(playMock).toHaveBeenCalledTimes(2);
+      expect(playMock).toHaveBeenCalledTimes(1);
+      expect(playMock).toHaveBeenCalledWith('flip', 0.4);
     } finally {
       vi.useRealTimers();
     }
@@ -124,7 +123,7 @@ describe('useSoundPlayback', () => {
   it('同一批次重复渲染不重复播放(seq 单调递增过滤)', () => {
     vi.useFakeTimers();
     try {
-      const batch = [q(1, ev('turn_start'))] as QueuedEvent[];
+      const batch = [q(1, ev('card/杀'))] as QueuedEvent[];
       const { rerender } = renderHook((ing) => useSoundPlayback(ing), {
         initialProps: batch,
       });
@@ -133,6 +132,20 @@ describe('useSoundPlayback', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it('摸牌、弃置、判定选择各自动作音效，并以真实毫秒时长安排队列', () => {
+    vi.useFakeTimers();
+    vi.spyOn(audioEngine, 'getDuration').mockReturnValue(0.8);
+    try {
+      renderHook((ing) => useSoundPlayback(ing), {
+        initialProps: [q(1, { type: '摸牌', effect: { sound: 'flip' } }), q(2, { type: '弃置', effect: { sound: 'flip' } })] as QueuedEvent[],
+      });
+      expect(playMock).toHaveBeenCalledWith('draw', 0.4);
+      act(() => { vi.advanceTimersByTime(559); });
+      expect(playMock).toHaveBeenCalledTimes(1);
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(playMock).toHaveBeenLastCalledWith('discard', 0.4);
+    } finally { vi.useRealTimers(); }
   });
 
   // cleanup→remount 回归测试:模拟 StrictMode 的 mount→cleanup→remount。

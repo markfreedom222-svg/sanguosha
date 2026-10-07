@@ -37,7 +37,7 @@ export function CardFace({
    *  图片 URL 仍用原始 name('杀')因资源按内部牌名索引。 */
   damageType?: string;
 }) {
-  const url = getCardImage({ name, suit, rank });
+  const url = getCardImage({ name, suit, rank, damageType });
   const color = SUIT_COLOR[suit ?? ''] ?? '#ccc';
   const sz = size;
   const display = displayCardName(name, damageType);
@@ -60,14 +60,24 @@ export function CardFace({
   if (!url) return fallback;
 
   return (
-    <object
+    <>
+      <object
       className={cardObject}
       data={url}
       aria-label={`${display} ${suit}${rank}`}
     >
       {/* object 加载失败时浏览器渲染此 fallback */}
       {fallback}
-    </object>
+      </object>
+      <div
+        className={`${corner} ${imageCorner} ${sz === 'small' ? cornerSmall : sz === 'large' ? cornerLarge : cornerNormal}`}
+        style={{ '--suit-color': suit === '♥' || suit === '♦' ? '#b91c1c' : '#111827' } as React.CSSProperties}
+        aria-hidden="true"
+      >
+        <span className={rankCls}>{rank}</span>
+        <span className={`${suitCls} ${suit === '♥' || suit === '♦' ? redSuitCls : ''}`}>{suit}</span>
+      </div>
+    </>
   );
 }
 
@@ -126,6 +136,13 @@ const corner = css`
 `;
 const rankCls = css`
   font-weight: bold;
+`;
+const imageCorner = css`
+  background: rgba(255, 248, 224, 0.94);
+  border-radius: 3px;
+  padding: 3px;
+  text-shadow: none;
+  pointer-events: none;
 `;
 const suitCls = css``;
 

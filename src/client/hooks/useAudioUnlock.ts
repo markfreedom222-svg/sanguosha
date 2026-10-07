@@ -1,15 +1,7 @@
-// src/client/hooks/useAudioUnlock.ts
-// 自动播放策略解锁 hook:在 App 根挂载一次性 click/keydown listener,
-// 首次用户交互后创建并 resume AudioContext。
-//
-// 浏览器自动播放策略(Autoplay Policy):AudioContext 在用户交互前处于 suspended,
-// 无法发声。本 hook 注册一次性监听器,任意 click/keydown/touchstart 触发后
-// 调用 audioEngine.unlock() 创建 context,然后移除监听器(不重复触发)。
-//
-// 使用:在 App 根组件调用 `useAudioUnlock()`(仅需一处)。
-
+// User gestures unlock effects and looping music; later gestures retry blocked music.
 import { useEffect } from 'react';
 import { audioEngine } from '../sounds/audioEngine';
+import { musicEngine } from '../sounds/musicEngine';
 
 /** 触发解锁的事件类型(覆盖鼠标/键盘/触摸) */
 const UNLOCK_EVENTS: Array<keyof DocumentEventMap> = ['click', 'keydown', 'touchstart'];
@@ -20,6 +12,9 @@ const UNLOCK_EVENTS: Array<keyof DocumentEventMap> = ['click', 'keydown', 'touch
  */
 const PRELOAD_SOUNDS = [
   'flip', // 摸牌/弃牌/获得/判定(最高频)
+  'draw',
+  'discard',
+  'judge',
   'card/杀', // 出杀(最常见攻击)
   'card/闪', // 闪避(最常见响应)
   'card/桃', // 桃(回复/救人)
@@ -34,19 +29,16 @@ const PRELOAD_SOUNDS = [
 export function useAudioUnlock(): void {
   useEffect(() => {
     // 已经解锁(如 SSR hydration 后已有交互):无需注册
-    if (audioEngine.isUnlocked()) return;
-
-    let unlocked = false;
     const handler = () => {
-      if (unlocked) return;
-      unlocked = true;
+      if (audioEngine.isUnlocked() && musicEngine.isUnlocked()) {
+        musicEngine.sync();
+        return;
+      }
       audioEngine.unlock();
+      musicEngine.unlock();
       // 预热高频音效:首次摸牌/出杀等无延迟(文件缺失会静默负缓存,无副作用)
       audioEngine.preload(PRELOAD_SOUNDS);
-      // 解锁后移除所有监听器(一次性)
-      for (const evt of UNLOCK_EVENTS) {
-        document.removeEventListener(evt, handler, true);
-      }
+      // Keep listening so music rejected by autoplay can retry on a later gesture.
     };
 
     // capture: true 确保在目标元素之前捕获,尽早解锁

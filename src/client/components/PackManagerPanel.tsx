@@ -21,6 +21,12 @@ export function PackManagerPanel({ packs, onToggle, onRefresh }: PackManagerPane
         <button onClick={onRefresh} style={btnStyle}>重新发现</button>
       </div>
       {packs.length === 0 && <div style={{ opacity: 0.6 }}>未发现任何资源包</div>}
+      {packs.length > 0 && packs.every((p) => p.resourceCount === 0) && (
+        <div role="status" style={{ marginBottom: 12, color: '#fbbf24' }}>
+          尚未安装图片和音频资源，当前使用文字牌面，无游戏音效。
+        </div>
+      )}
+      <a href="/resource-check.html" target="_blank" rel="noreferrer" style={{ color: '#6cf' }}>查看图片与试听音效</a>
       {packs.map((p) => (
         <label key={p.id} style={rowStyle}>
           <input
@@ -38,6 +44,7 @@ export function PackManagerPanel({ packs, onToggle, onRefresh }: PackManagerPane
               作者:{p.author} v{p.version}
               {p.homepage && <> <a href={p.homepage} target="_blank" rel="noreferrer" style={{ color: '#6cf' }}>[来源]</a></>}
             </div>
+            {p.description && <div style={{ fontSize: 12, marginTop: 4 }}>{p.description}</div>}
           </div>
         </label>
       ))}

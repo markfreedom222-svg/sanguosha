@@ -6,6 +6,7 @@ import { loadReplay } from '../replay/replayFile';
 import type { ReplayFile } from '../replay/types';
 import { AuthPanel } from '../components/AuthPanel';
 import { useAuth } from '../hooks/useAuth';
+import { SoundControl } from '../components/SoundControl';
 
 // ─── 首页视觉:深色牌匾质感 + 金色书法标题 + 卡片式入口 ───
 
@@ -227,6 +228,7 @@ export function HomePage() {
     <div className={`${pageBgStyle} ${page}`}>
       <h1 className={title}>三国杀</h1>
       <p className={subtitle}>数字卡牌游戏</p>
+      <SoundControl />
       {oauthError && (
         <div className={identityBar} role="alert">
           <span>登录失败（{oauthError}），请重试</span>
@@ -258,6 +260,13 @@ export function HomePage() {
             <span className={linkDesc}>加载对局录像文件，回顾整场战斗</span>
           </span>
         </button>
+        <a href="/resource-check.html" className={linkButtonBase}>
+          <span className={`${linkIcon} ${linkBlue}`}>🎵</span>
+          <span className={linkTexts}>
+            <span className={linkTitle}>图片与音效</span>
+            <span className={linkDesc}>浏览武将与卡牌图片，试听游戏声音</span>
+          </span>
+        </a>
         <input
           ref={fileInputRef}
           type="file"

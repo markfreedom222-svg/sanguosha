@@ -18,13 +18,7 @@ import {
 } from '../engine/index';
 import { eventsForViewer } from '../engine/view/events-for-viewer';
 import { getPendingDeadline } from '../engine/view/buildView';
-import {
-  allCharacters,
-  weiCharacters,
-  shuCharacters,
-  wuCharacters,
-  qunCharacters,
-} from '../engine/data/characters';
+import { resolveCharPool } from './characterPool';
 
 import type { ServerMessage, DeadlineInfo } from './protocol';
 import type { Room } from './room';
@@ -42,33 +36,6 @@ import { VirtualClock, RealClock } from '../engine/core/clock';
 function computeSeatRotation(seed: number, n: number): number {
   if (n <= 1) return 0;
   return createRng(seed + 7919).nextInt(n);
-}
-
-/** 默认武将列表:使用引擎全量武将(allCharacters),供选将池使用。
- *  skills 字段来自武将数据(供选将 UI 显示);选完后只实例化引擎默认技能(见 系统规则·选将)。 */
-const CHARACTERS: Array<{ name: string; skills: string[] }> = allCharacters.map((c) => ({
-  name: c.name,
-  skills: c.skills.map((s) => s.name),
-}));
-
-/** 将池预设解析:按预设裁剪武将列表。
- *  - 'standard':标准经典(各势力前 8 名),约 32 人
- *  - 'extended':扩展(标准 + 剩余),约全量
- *  - 'all':全量(60 人) */
-function resolveCharPool(preset: string): Array<{ name: string; skills: string[] }> {
-  const toList = (chars: typeof allCharacters) =>
-    chars.map((c) => ({ name: c.name, skills: c.skills.map((s) => s.name) }));
-  if (preset === 'standard') {
-    // 各势力取前 8 个经典武将
-    return [
-      ...toList(weiCharacters.slice(0, 8)),
-      ...toList(shuCharacters.slice(0, 8)),
-      ...toList(wuCharacters.slice(0, 8)),
-      ...toList(qunCharacters.slice(0, 8)),
-    ];
-  }
-  // extended / all 均为全量(当前数据集即扩展版;后续数据扩充时细化 extended)
-  return CHARACTERS;
 }
 
 /** 玩家断线后的保活宽限期(ms)。在此期间重连可恢复座位,超时后正常清理。
@@ -158,7 +125,7 @@ export class GameSession {
   }
 
   /** 用持久化数据恢复:create(config) → bootstrap → 重放 actionLog,确定性重建完整 state。
-   *  config 从 state(rngSeed/playerCount)+ 全局 CHARACTERS 重构。 */
+   *  config 从 state(rngSeed/playerCount)+ 房间武将池 重构。 */
   async restoreState(state: GameState, actionLog: ActionLogEntry[] = []): Promise<void> {
     this.lastActivityAt = Date.now();
     // config 重构:seed 来自 state,playerCount 从 state.players,characters 用全局表,

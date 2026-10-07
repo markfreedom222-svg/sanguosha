@@ -245,9 +245,9 @@ const TIMEOUT_OPTIONS: Array<{ label: string; value: number }> = [
 ];
 
 const POOL_OPTIONS: Array<{ label: string; value: CharPoolPreset }> = [
-  { label: '标准池 (~32人)', value: 'standard' },
-  { label: '扩展池', value: 'extended' },
-  { label: '全武将 (60人)', value: 'all' },
+  { label: '标准池（32人）', value: 'standard' },
+  { label: '扩展池（不含界武将）', value: 'extended' },
+  { label: '全武将（含界武将）', value: 'all' },
 ];
 
 export function RoomConfigPanel({

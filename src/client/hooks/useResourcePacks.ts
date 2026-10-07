@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { resourceManager, type PackInfo } from '../resources';
+import { musicEngine } from '../sounds/musicEngine';
 
 export function useResourcePacks() {
   const [packs, setPacks] = useState<PackInfo[]>([]);
@@ -16,6 +17,7 @@ export function useResourcePacks() {
       if (cancelled) return;
       setPacks(resourceManager.listPacks());
       setReady(true);
+      musicEngine.sync();
     }).catch(() => {
       if (!cancelled) setReady(true);
     });
@@ -29,11 +31,13 @@ export function useResourcePacks() {
     resourceManager.init().then(() => {
       setPacks(resourceManager.listPacks());
       setReady(true);
+      musicEngine.sync();
     });
   }, []);
 
   const togglePack = useCallback((packId: string, enabled: boolean) => {
     resourceManager.setPackEnabled(packId, enabled);
+    musicEngine.sync();
     setPacks(resourceManager.listPacks());
   }, []);
 

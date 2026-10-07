@@ -190,9 +190,9 @@ export const GAME_MODE_LABELS: Record<string, string> = {
 
 export const POOL_LABELS: Record<string, string> = {
 
-  standard: '标准池 (~32人)',
-  extended: '扩展池',
-  all: '全武将 (60人)',
+  standard: '标准池（32人）',
+  extended: '扩展池（不含界武将）',
+  all: '全武将（含界武将）',
 };
 
 export const TIMEOUT_OPTIONS: Array<{ label: string; value: number }> = [

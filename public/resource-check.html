@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>三国杀 · 图片与声音检查</title>
+<style>
+body{margin:0;background:#101827;color:#e5e7eb;font:16px/1.6 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:28px}h1{margin:0;color:#f3d68b}h2{margin-top:32px}a{color:#93c5fd}.status{background:#1e293b;padding:16px;border-radius:12px;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}figure{margin:0;background:#1e293b;padding:10px;border-radius:10px;text-align:center}img{width:100%;height:180px;object-fit:contain}figcaption{font-size:13px}button{border:0;border-radius:8px;padding:12px 18px;background:#d8ae59;color:#111827;font-size:15px;cursor:pointer}button:disabled{opacity:.5}.audio{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.clip{padding:12px;background:#1e293b;border-radius:10px}audio{width:100%}.muted{color:#a8b4c7;font-size:14px}.error{color:#fca5a5}
+</style>
+<main>
+<a href="/">← 返回游戏</a><h1>三国杀 · 图片与声音检查</h1>
+<p class="muted">查看已安装的视听资源。点击音频播放器即可试听；浏览器需要点击操作才能播放声音。</p>
+<div id="status" class="status" role="status">正在检查资源…</div>
+<button id="decode" disabled>检查全部音频解码</button><span id="decodeStatus" role="status"></span>
+<div id="source" class="muted"></div>
+<h2>武将图片</h2><div id="characters" class="grid"></div>
+<h2>卡牌图片</h2><div id="cards" class="grid"></div>
+<h2>背景音乐</h2><div id="music" class="audio"></div>
+<h2>卡牌语音与操作音效</h2><div id="sounds" class="audio"></div>
+<div id="missing" class="status"></div>
+</main>
+<script type="module">
+const status = document.getElementById('status');
+const button = document.getElementById('decode');
+try {
+  const response = await fetch('/packs/index.json');
+  if (!response.ok) throw new Error('资源接口不可用');
+  const {packs} = await response.json();
+  const resources = new Map();
+  packs.sort((a,b)=>a.manifest.priority-b.manifest.priority);
+  for (const pack of packs) for (const r of pack.manifest.resources) {
+    const file = r.file ?? r.id + (r.type === 'image' ? '.png' : r.type === 'audio' ? '.mp3' : '.json');
+    resources.set(r.id, {...r,url:'/packs/'+encodeURIComponent(pack.id)+'/'+file.split('/').map(encodeURIComponent).join('/')});
+  }
+  const images = [...resources.values()].filter(r=>r.type==='image'&&(r.id.startsWith('character/')||r.id.startsWith('card/art/')||r.id==='card/back'));
+  const audios = [...resources.values()].filter(r=>r.type==='audio');
+  let loaded=0,failed=0;
+  const update=()=>{status.textContent=`已发现 ${packs.length} 个资源包 · 武将 ${images.filter(r=>r.id.startsWith('character/')).length} 个 · 卡牌插图 ${images.filter(r=>r.id.startsWith('card/art/')).length} 种 · 音频 ${audios.length} 项 · 图片加载 ${loaded}/${images.length}，失败 ${failed}`;};
+  update();
+  for (const r of images) {
+    const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');
+    img.alt=r.id.split('/').at(-1);img.onload=()=>{loaded++;update();};img.onerror=()=>{failed++;caption.className='error';update();};img.src=r.url;
+    caption.textContent=img.alt;figure.append(img,caption);document.getElementById(r.id.startsWith('character/')?'characters':'cards').append(figure);
+  }
+  for (const r of audios.filter(r=>!r.id.startsWith('sound/death/'))) {
+    const row=document.createElement('div'),title=document.createElement('div'),audio=document.createElement('audio');
+    row.className='clip';title.textContent=r.id==='sound/bgm'?'无名杀 · 默认背景音乐':r.id.replace('sound/','');audio.controls=true;audio.preload='none';audio.volume=r.id==='sound/bgm'?0.18:r.id.startsWith('sound/card/')?0.8:0.4;audio.src=r.url;row.append(title,audio);document.getElementById(r.id==='sound/bgm'?'music':'sounds').append(row);
+  }
+  for (const pack of packs) {
+    const p=document.createElement('p');p.textContent=pack.manifest.name+' — '+(pack.manifest.description??'');
+    if(pack.manifest.homepage?.startsWith('https://')){const a=document.createElement('a');a.href=pack.manifest.homepage;a.textContent=' 资源来源';a.target='_blank';a.rel='noreferrer';p.append(a);}
+    document.getElementById('source').append(p);
+  }
+  const coverageResponse=await fetch('/packs/base/coverage.json');
+  if(coverageResponse.ok){const c=await coverageResponse.json();document.getElementById('missing').textContent='尚无匹配立绘：'+(c.missing.map(x=>x.replace('character/','')).join('、')||'无')+'。部分界武将共用标准武将原图。';}
+  button.disabled=audios.length===0;
+  button.onclick=async()=>{
+    button.disabled=true;
+    const label=document.getElementById('decodeStatus');
+    let ctx;
+    try {
+      ctx=new AudioContext();await ctx.resume();
+      const unique=[...new Set(audios.map(r=>r.url))];let ok=0;const errors=[];
+      for(const url of unique){try{const res=await fetch(url);if(!res.ok)throw new Error('HTTP '+res.status);await ctx.decodeAudioData(await res.arrayBuffer());ok++;}catch{errors.push(url);}label.textContent=` 音频解码 ${ok}/${unique.length}，失败 ${errors.length}`;}
+      if(errors.length){const p=document.createElement('p');p.className='error';p.textContent=errors.join('；');label.append(p);}
+    } catch(e){label.textContent=' 检查失败：'+e.message;}
+    finally{await ctx?.close();button.disabled=false;}
+  };
+}catch(e){status.textContent='检查失败：'+e.message;status.classList.add('error');}
+</script>
+</html>
