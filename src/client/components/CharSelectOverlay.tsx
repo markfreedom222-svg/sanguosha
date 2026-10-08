@@ -11,11 +11,11 @@
 // 选将保密:非自身选将时,不暴露 seat 玩家名字(避免情报泄漏)。
 // 选将逻辑:玩家点选后,内部维护 selectedCharIdx,点「确认」才向引擎发 respond action。
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { css, cx } from '@linaria/core';
 import { FACTION_BG, IDENTITY_COLORS } from './gameViewConstants';
 import { CountdownBar } from './CountdownBar';
-import { getSkillDescription } from '../../engine/skills/lifecycle';
+import { getSkillDescription, getSkillDescriptionAsync } from '../../engine/skills/lifecycle';
 import { useSkillDescReady } from '../hooks/useSkillDescReady';
 import { SkillTag } from './SkillTooltip';
 import { getCharacterImage } from '../assets/imageAssets';
@@ -91,6 +91,19 @@ export function CharSelectOverlay({
   const [factionFilter, setFactionFilter] = useState('全部');
   // 名称搜索关键字:仅做名称子串匹配(不做拼音转换,避免引入拼音表依赖)。
   const [searchText, setSearchText] = useState('');
+  const [descriptionsLoaded, setDescriptionsLoaded] = useState(false);
+  const candidateSkillIds = useMemo(() => [...new Set(candidates.flatMap((ch) => ch.skills))], [candidates]);
+  // 选将时玩家尚未拥有候选技能，不能依赖对战技能加载来取得说明。
+  useEffect(() => {
+    if (!isSelfSelecting) return;
+    let cancelled = false;
+    setDescriptionsLoaded(false);
+    void Promise.all(candidateSkillIds.map(getSkillDescriptionAsync)).then(() => {
+      if (!cancelled) setDescriptionsLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, [candidateSkillIds, isSelfSelecting]);
+  const inspectedCharacter = candidates.find((ch) => ch.name === (submittedChar ?? selectedCharName));
   // pending/target 变化时清空选中态与锁定态(新选将窗口开启);
   // 筛选/搜索态一并重置,避免上一轮的过滤条件遮住新一轮候选。
   useEffect(() => {
@@ -332,6 +345,11 @@ export function CharSelectOverlay({
                       onMouseEnter={() => {
                         if (submittedChar === null) setHoveredGroupBaseId(baseId);
                       }}
+                      onClick={() => {
+                        if (submittedChar !== null) return;
+                        setHoveredGroupBaseId(baseId);
+                        setSelectedCharName(versions[0].name);
+                      }}
                     >
                       {charImg && (
                         <img
@@ -362,7 +380,7 @@ export function CharSelectOverlay({
                       <div className={factionSeal}>{faction}</div>
                       <div className={candidateName}>{baseId}</div>
                       <div className={candidateMeta}>
-                        <span className={skillChip}>hover 展开选版本</span>
+                        <span className={skillChip}>点击 / 悬停查看版本</span>
                       </div>
                     </div>
                   );
@@ -388,6 +406,21 @@ export function CharSelectOverlay({
             {visibleGroups.length === 0 && (
               <div className={noMatchHint}>无匹配武将</div>
             )}
+
+            <section className={skillDetails} aria-label="武将技能介绍" aria-live="polite">
+              {inspectedCharacter ? (
+                <>
+                  <h3 className={skillDetailsTitle}>{inspectedCharacter.name} · 技能介绍</h3>
+                  {inspectedCharacter.skills.map((s) => (
+                    <div key={s} className={skillDetailsEntry}>
+                      <strong>{displaySkillName(s)}</strong>
+                      <p>{getSkillDescription(s) ?? (descriptionsLoaded ? '暂无技能说明' : '正在加载技能说明…')}</p>
+                    </div>
+                  ))}
+                  {inspectedCharacter.skills.length === 0 && <p>该武将没有专属技能。</p>}
+                </>
+              ) : <p>点击武将查看技能介绍，再点击「确认选择」完成选将。</p>}
+            </section>
 
             {/* 确认按钮:提交后锁定为「已选择 XXX」,禁止重复提交 */}
             <button
@@ -814,6 +847,34 @@ const skillChip = css`
   border-radius: 3px;
   padding: 3px 6px;
   white-space: nowrap;
+`;
+
+const skillDetails = css`
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(196, 162, 84, 0.4);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #eee1c5;
+  font-size: 15px;
+  line-height: 1.6;
+  scrollbar-width: thin;
+  & p { margin: 0; white-space: pre-wrap; }
+`;
+
+const skillDetailsTitle = css`
+  margin: 0 0 6px;
+  color: #f0d78a;
+  font-size: 16px;
+`;
+
+const skillDetailsEntry = css`
+  margin-top: 6px;
+  & strong { color: #e8c47a; }
 `;
 
 /* 选中态:2px 金框 + 外发光 + 卡正下方金色 ▼ 箭头(CSS border 三角) */
