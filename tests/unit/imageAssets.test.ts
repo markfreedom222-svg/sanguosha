@@ -78,6 +78,11 @@ describe('getCardImage', () => {
     expect(getCardImage({ name: '杀', suit: '♠', rank: '4', damageType: '雷电' })).toBe('/packs/base/art/thunder_slash.png');
   });
 
+  it('resolves elemental display names from the central play history to their artwork', () => {
+    expect(getCardImage({ name: '雷杀', suit: '♣', rank: '7' })).toBe('/packs/base/art/thunder_slash.png');
+    expect(getCardImage({ name: '火杀', suit: '♥', rank: '4' })).toBe('/packs/base/art/fire_slash.png');
+  });
+
   it('routes equipment cards with default .png', () => {
     expect(getCardImage({ name: '丈八蛇矛', suit: '♠', rank: 'Q' })).toBe('/packs/base/card/丈八蛇矛-Q-♠.png');
     expect(getCardImage({ name: '赤兔', suit: '♥', rank: '5' })).toBe('/packs/base/card/赤兔-5-♥.png');

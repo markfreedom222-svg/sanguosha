@@ -32,16 +32,20 @@ export function getCharacterImage(name: string): string | null {
 
 /** 卡牌图 URL。需同时具备 name + suit + rank。扩展名由 manifest 的 file 字段决定。 */
 export function getCardImage(card: { name: string; suit?: string; rank?: string; damageType?: string }): string | null {
-  const sub = NAME_TO_SUB.get(card.name);
-  if (!sub || !card.suit || !card.rank) return null;
-  const variant = card.name === '杀' && card.damageType === '火焰' ? '火杀'
+  // 出牌历史使用展示名「火杀/雷杀」，手牌使用内部名「杀」和伤害属性。
+  // 两种输入都归到基本牌「杀」，避免展示名被当作未知牌而退回深色占位。
+  const variant = card.name === '火杀' || card.name === '雷杀' ? card.name
+    : card.name === '杀' && card.damageType === '火焰' ? '火杀'
     : card.name === '杀' && card.damageType === '雷电' ? '雷杀' : null;
+  const name = variant ? '杀' : card.name;
+  const sub = NAME_TO_SUB.get(name);
+  if (!sub || !card.suit || !card.rank) return null;
   if (variant) {
     const art = resourceManager.get(`card/art/${variant}`);
     if (art) return art;
   }
-  return resourceManager.get(`card/${card.name}-${card.rank}-${card.suit}`)
-    ?? resourceManager.get(`card/art/${card.name}`);
+  return resourceManager.get(`card/${name}-${card.rank}-${card.suit}`)
+    ?? resourceManager.get(`card/art/${name}`);
 }
 
 /** 装备区缩略图 URL。 */
