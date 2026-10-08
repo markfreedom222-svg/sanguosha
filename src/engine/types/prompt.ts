@@ -113,6 +113,8 @@ export interface DistributePrompt {
   type: 'distribute';
   title: string;
   description?: string;
+  /** 可放弃的被动分配询问：按钮发送空 allocation，不进行分配。 */
+  cancelLabel?: string;
   /** 分配模式:
    *  - 'allocate'(默认,遗计/仁德):把手牌逐张分配给若干目标,提交 `allocation=[{target,cardIds}]`。
    *  - 'select'(制衡):只选若干张牌,提交 `cardIds=[...]`。

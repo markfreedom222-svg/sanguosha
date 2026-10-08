@@ -89,7 +89,7 @@ describe('GameView:仁德/制衡 distribute 主动技按钮', () => {
       expect(screen.getAllByText(/仁德：选择要送出的手牌和目标角色/).length).toBeGreaterThan(0);
     });
     // externalTargetSelection 模式:显示提示文字"已选 0 张"
-    expect(screen.getByText(/已选/)).toBeDefined();
+    expect(screen.getByRole('region', { name: '技能选牌与分配' }).textContent).toContain('已选');
   });
 
   it('切换视角到孙权(P1)且为孙权回合:制衡按钮渲染并可点击弹出 select 弹窗', async () => {
@@ -252,16 +252,14 @@ describe('GameView:distribute 外部候选区(观星类场景)', () => {
     const externalD2 = container.querySelector('[data-card-id="d2"]');
     expect(externalD2).not.toBeNull();
 
-    // 用更精确的 label 文本(prompt.title · 已选 N),避免「已选」匹配 ActionBar 里其他文本
-    const labelOf = (n: number) => screen.getByText(`观星 · 已选 ${n}`);
-    // 初始:已选 0
-    expect(labelOf(0)).toBeDefined();
+    // 独立选牌面板用 aria-pressed 明确标记选中状态。
+    expect(externalD2!.getAttribute('aria-pressed')).toBe('false');
     // 点击 d2 选中 → 已选 1
     fireEvent.click(externalD2!);
-    expect(labelOf(1)).toBeDefined();
+    expect(externalD2!.getAttribute('aria-pressed')).toBe('true');
     // 再点回退 → 已选 0
     fireEvent.click(externalD2!);
-    expect(labelOf(0)).toBeDefined();
+    expect(externalD2!.getAttribute('aria-pressed')).toBe('false');
   });
 });
 

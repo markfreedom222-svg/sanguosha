@@ -85,8 +85,8 @@ export function CharSelectOverlay({
   // 直到引擎广播新 view(选将 slot resolve → pending 切换 → 本组件卸载或重置)。
   // 此前遮罩仍在渲染,必须禁止重复点击其他武将 + 再次提交。
   const [submittedChar, setSubmittedChar] = useState<string | null>(null);
-  // 多版本组 hover 展开态:记录当前 hover 的组 baseId,null 表示无展开。
-  const [hoveredGroupBaseId, setHoveredGroupBaseId] = useState<string | null>(null);
+  // 点击展开版本，避免 mouseenter 改变卡片位置、吞掉随后的点击。
+  const [expandedGroupBaseId, setExpandedGroupBaseId] = useState<string | null>(null);
   // 势力筛选:仅影响候选展示,不参与提交逻辑;'全部' 表示不过滤。
   const [factionFilter, setFactionFilter] = useState('全部');
   // 名称搜索关键字:仅做名称子串匹配(不做拼音转换,避免引入拼音表依赖)。
@@ -109,7 +109,7 @@ export function CharSelectOverlay({
   useEffect(() => {
     setSelectedCharName(null);
     setSubmittedChar(null);
-    setHoveredGroupBaseId(null);
+    setExpandedGroupBaseId(null);
     setFactionFilter('全部');
     setSearchText('');
   }, [isSelfSelecting, charSelectTarget]);
@@ -288,14 +288,14 @@ export function CharSelectOverlay({
               />
             </div>
 
-            {/* 候选网格:固定 5 列,多版本组 hover 原地水平展开。
+            {/* 候选网格:固定 5 列,多版本组点击展开并保持。
                 网格区内部滚动,标题/筛选/确认按钮固定可见(面板不再整页滚动)。 */}
             <div className={gridScroll}>
               <div className={candidateGrid}>
               {visibleGroups.map((versions) => {
                 const baseId = versions[0].baseId ?? versions[0].name;
                 const isMulti = versions.length > 1;
-                const isExpanded = isMulti && hoveredGroupBaseId === baseId;
+                const isExpanded = isMulti && expandedGroupBaseId === baseId;
 
                 if (isMulti && isExpanded) {
                   // 多版本组展开态:水平排列各版本候选卡
@@ -303,7 +303,6 @@ export function CharSelectOverlay({
                     <div
                       key={baseId}
                       className={candidateGroupExpanded}
-                      onMouseLeave={() => setHoveredGroupBaseId(null)}
                     >
                       {versions.map((ch) =>
                         renderCard(
@@ -322,7 +321,7 @@ export function CharSelectOverlay({
                 }
 
                 if (isMulti) {
-                  // 多版本组折叠态:显示基础名 + 版本徽章,hover 展开
+                  // 多版本组折叠态:显示基础名 + 版本徽章,点击展开。
                   const isSelected = versions.some((v) => selectedCharName === v.name);
                   const isSubmittedPick =
                     submittedChar !== null && versions.some((v) => v.name === submittedChar);
@@ -342,12 +341,9 @@ export function CharSelectOverlay({
                       style={
                         { '--faction-color': FACTION_BG[faction] || '#333' } as React.CSSProperties
                       }
-                      onMouseEnter={() => {
-                        if (submittedChar === null) setHoveredGroupBaseId(baseId);
-                      }}
                       onClick={() => {
                         if (submittedChar !== null) return;
-                        setHoveredGroupBaseId(baseId);
+                        setExpandedGroupBaseId(baseId);
                         setSelectedCharName(versions[0].name);
                       }}
                     >
@@ -380,7 +376,7 @@ export function CharSelectOverlay({
                       <div className={factionSeal}>{faction}</div>
                       <div className={candidateName}>{baseId}</div>
                       <div className={candidateMeta}>
-                        <span className={skillChip}>点击 / 悬停查看版本</span>
+                        <span className={skillChip}>点击查看技能 / 版本</span>
                       </div>
                     </div>
                   );
@@ -395,6 +391,7 @@ export function CharSelectOverlay({
                   submittedChar === ch.name,
                   () => {
                     if (submittedChar !== null) return;
+                    setExpandedGroupBaseId(null);
                     setSelectedCharName(ch.name);
                   },
                 );

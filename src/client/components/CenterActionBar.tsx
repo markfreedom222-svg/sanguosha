@@ -71,7 +71,7 @@ export function CenterActionBar({
     isDistributeActive,
     distSelected,
     distAllocations,
-    distTargetName,
+    distSubmit,
     selectedActive,
     playButtonState,
     transformSubmit,
@@ -333,22 +333,8 @@ export function CenterActionBar({
         activeDistribute &&
         (() => {
           const mode = activeDistribute.prompt.mode ?? 'allocate';
-          const minTotal = activeDistribute.prompt.minTotal ?? 1;
-          const maxTotal = activeDistribute.prompt.maxTotal ?? 99;
-          let canSubmit: boolean;
-          let label: string;
-          if (mode === 'select') {
-            canSubmit = distSelected.size >= minTotal && distSelected.size <= maxTotal;
-            label = `确认(${distSelected.size})`;
-          } else if (activeDistribute.externalTargetSelection) {
-            canSubmit =
-              distSelected.size >= minTotal && distSelected.size <= maxTotal && !!distTargetName;
-            label = `确定(${distSelected.size})${distTargetName ? ` → ${distTargetName}` : ''}`;
-          } else {
-            const total = distAllocations.flatMap((a) => a.cardIds).length;
-            canSubmit = total >= minTotal;
-            label = `提交分配(${total})`;
-          }
+          const canSubmit = distSubmit?.canSubmit ?? false;
+          const label = distSubmit?.label ?? '提交分配';
           return (
             <>
               {mode === 'select' && (

@@ -263,7 +263,7 @@ describe('GameView:选将完成后禁止重新选将,展示已选武将', () => 
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
-  it('多版本武将组:标/界按 baseId 归组,折叠态显示基础名+版本徽章,hover 展开后选择具体版本', async () => {
+  it('多版本武将组:标/界按 baseId 归组,折叠态显示基础名+版本徽章,点击展开后选择具体版本', async () => {
     // candidates 含标/界版本对(刘备+界刘备 同 baseId)+ 单版本(孙权)
     const view: GameView = {
       viewer: 0,
@@ -302,11 +302,11 @@ describe('GameView:选将完成后禁止重新选将,展示已选武将', () => 
     expect(screen.getByText('刘备')).toBeDefined();
     expect(screen.queryByText('界刘备')).toBeNull();
 
-    // hover 展开:mouseEnter 多版本组 → 显示具体版本候选卡
+    // 点击展开多版本组 → 显示具体版本候选卡
     const multiCard = document.querySelector('[data-multi-group="刘备"]');
     expect(multiCard).not.toBeNull();
     await act(async () => {
-      fireEvent.mouseEnter(multiCard!);
+      fireEvent.click(multiCard!);
     });
 
     // 展开后"界刘备"候选卡出现

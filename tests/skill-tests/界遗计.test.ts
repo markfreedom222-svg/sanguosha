@@ -217,6 +217,24 @@ describe('界遗计', () => {
 
   // ─── respond execute ─────────────────────────
 
+  it('respond:GIVE_RT 可取消交牌，保留已经摸到的手牌', async () => {
+    const state = createGameState({
+      players: [
+        makePlayer({ index: 0, name: 'P1', hand: ['a', 'b'], skills: ['界遗计'] }),
+        makePlayer({ index: 1, name: 'P2', skills: ['杀'] }),
+      ],
+      cardMap: { a: makeCard('a', '杀'), b: makeCard('b', '闪') },
+      currentPlayerIndex: 1, phase: '出牌', turn: { round: 1, phase: '出牌', vars: {} },
+    });
+    await harness.setup(state);
+    injectPending(state, 0, '界遗计/giveCard', { type: 'distribute', mode: 'allocate' });
+    await harness.player('P1').expectAccepted({ skillId: '界遗计', actionType: 'respond', params: { allocation: [] } });
+    await harness.waitForStable();
+    expect(state.localVars['遗计/allocation']).toEqual([]);
+    expect(state.players[0].hand).toEqual(['a', 'b']);
+    expect(state.pendingSlots.size).toBe(0);
+  });
+
   it('respond:GIVE_RT 合法 allocation 写入 localVars', async () => {
     const state: GameState = createGameState({
       players: [

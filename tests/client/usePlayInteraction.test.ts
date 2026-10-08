@@ -1976,6 +1976,32 @@ function pendingDistributeParams(
 }
 
 describe('usePlayInteraction · distribute(遗计 allocate 被动分配)', () => {
+  it('标准遗计要求两张全部分配，分配一张时按钮和提交处理都拒绝提前提交', () => {
+    const send = vi.fn();
+    const { result } = renderPlay(pendingDistributeParams(send, yijiPrompt({ minTotal: 2, maxTotal: 2 })));
+    act(() => result.current.handleDistToggle('d1'));
+    act(() => result.current.handleDistAllocate(0));
+    expect(result.current.distSubmit?.canSubmit).toBe(false);
+    act(() => result.current.handleDistSubmit());
+    expect(send).not.toHaveBeenCalled();
+    act(() => result.current.handleDistToggle('d2'));
+    act(() => result.current.handleDistAllocate(1));
+    expect(result.current.distSubmit?.canSubmit).toBe(true);
+    act(() => result.current.handleDistSubmit());
+    expect(sentCalls(send)[0].params).toEqual({ allocation: [{ target: 0, cardIds: ['d1'] }, { target: 1, cardIds: ['d2'] }] });
+  });
+
+  it('已分配的牌不能重复选择，已分配数量计入总数上限', () => {
+    const { result } = renderPlay(pendingDistributeParams(vi.fn(), yijiPrompt({ cardIds: ['d1', 'd2', 'd3'], maxTotal: 2 })));
+    act(() => result.current.handleDistToggle('d1'));
+    act(() => result.current.handleDistAllocate(1));
+    act(() => result.current.handleDistToggle('d1'));
+    expect(result.current.distSelected.size).toBe(0);
+    act(() => result.current.handleDistToggle('d2'));
+    act(() => result.current.handleDistToggle('d3'));
+    expect([...result.current.distSelected]).toEqual(['d2']);
+  });
+
   it('选牌后点玩家分配,提交发送 allocation', () => {
     const send = vi.fn();
     const { result } = renderPlay(pendingDistributeParams(send, yijiPrompt()));

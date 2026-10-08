@@ -1440,19 +1440,21 @@ export function usePlayInteraction(
   const handleDistToggle = useCallback(
     (id: string) => {
       if (!activeDistribute) return;
+      const allocatedIds = distAllocations.flatMap((a) => a.cardIds);
+      if (allocatedIds.includes(id)) return;
       const maxTotal = activeDistribute.prompt.maxTotal ?? 99;
       setDistSelected((prev) => {
         const n = new Set(prev);
         if (n.has(id)) {
           n.delete(id);
         } else {
-          if (n.size >= maxTotal) return prev;
+          if (n.size + allocatedIds.length >= maxTotal) return prev;
           n.add(id);
         }
         return n;
       });
     },
-    [activeDistribute],
+    [activeDistribute, distAllocations],
   );
 
   // distribute select 模式(制衡)全选:候选=activeDistribute.cardIds(手牌+装备+外部候选),
@@ -1492,17 +1494,18 @@ export function usePlayInteraction(
     const { skillId, actionType, prompt, externalTargetSelection } = activeDistribute;
     const mode = prompt.mode ?? 'allocate';
     const minTotal = prompt.minTotal ?? 1;
+    const maxTotal = prompt.maxTotal ?? 99;
     if (mode === 'select') {
-      if (distSelected.size < minTotal) return;
+      if (distSelected.size < minTotal || distSelected.size > maxTotal) return;
       send(skillId, actionType, { cardIds: [...distSelected] });
     } else if (externalTargetSelection) {
-      if (distSelected.size < minTotal || !distTargetName) return;
+      if (distSelected.size < minTotal || distSelected.size > maxTotal || !distTargetName) return;
       const idx = nameToIndex(distTargetName);
       if (idx < 0) return;
       send(skillId, actionType, { allocation: [{ target: idx, cardIds: [...distSelected] }] });
     } else {
       const total = distAllocations.flatMap((a) => a.cardIds).length;
-      if (total < minTotal) return;
+      if (total < minTotal || total > maxTotal) return;
       send(skillId, actionType, { allocation: distAllocations });
     }
     setDistSelected(new Set());
@@ -1576,7 +1579,7 @@ export function usePlayInteraction(
       };
     }
     const total = distAllocations.flatMap((a) => a.cardIds).length;
-    return { canSubmit: total >= minTotal, label: `提交分配(${total})` };
+    return { canSubmit: total >= minTotal && total <= maxTotal, label: `提交分配(${total})` };
   })();
 
   const clearDiscard = useCallback(() => setSelectedForDiscard([]), []);

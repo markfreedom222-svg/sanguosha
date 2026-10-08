@@ -1,5 +1,5 @@
 // src/client/components/HandArea.tsx
-// 底栏手牌区:阶段/手牌数标题条、distribute 外部候选区、手牌列表(选中/弃选/
+// 底栏手牌区:阶段/手牌数标题条、手牌列表(选中/弃选/
 // 回应选中/canPlay 置灰/转化高亮/distribute 高亮、拖拽重排)与无手牌/旁观空态。
 //
 // 职责:渲染 GameView bottomLayout 的 handColumn 区块。卡片级派生
@@ -11,11 +11,9 @@
 // 共享数据(perspectiveName/canOperate)来自 GameViewCtx,专属数据仍走 props。
 
 import { cx } from '@linaria/core';
-import type { CSSProperties, RefObject } from 'react';
+import type { RefObject } from 'react';
 import * as styles from './gameViewStyles';
 import { HandCard } from './HandCard';
-import { displayCardName } from '../utils/gameViewHelpers';
-import { SUIT_COLOR } from './gameViewConstants';
 import type { Card } from '../../engine/types';
 import type { PlayInteractionResult } from '../hooks/usePlayInteraction';
 import { useGameView } from './GameViewCtx';
@@ -90,7 +88,6 @@ export function HandArea({
     isDistributeActive,
     distSelected,
     distAllocations,
-    distExternalCandidates,
     selectedRespondCardId,
     isRespondTransformContext,
     handleCardClick,
@@ -114,46 +111,6 @@ export function HandArea({
             </span>
           </div>
         </div>
-        {/* distribute 外部候选区:候选牌不在手牌/装备区时(观星/界破军等),单独渲染。
-            点点击触发同一 handleCardClick → handleDistToggle(复用主流程候选选择逻辑)。n                手牌区/装备区的候选高亮仍由原逻辑处理,本区只补充"不在那些区域"的牌。 */}
-        {isDistributeActive && distExternalCandidates.length > 0 && (
-          <div className={styles.distExternalWrap}>
-            <span className={styles.distExternalLabel}>
-              {activeDistribute?.prompt.title ?? '候选牌'} · 已选 {distSelected.size}
-            </span>
-            <div className={styles.distExternalList}>
-              {distExternalCandidates.map((card) => {
-                const isSelected = distSelected.has(card.id);
-                const isAllocated = distAllocations.some((a) =>
-                  a.cardIds.includes(card.id),
-                );
-                return (
-                  <div
-                    key={card.id}
-                    data-card-id={card.id}
-                    className={cx(
-                      styles.distExternalCard,
-                      isSelected && styles.handCardDistributeSelected,
-                      isAllocated && styles.handCardDistributeAllocated,
-                      !isSelected && !isAllocated && styles.handCardDistributeCandidate,
-                    )}
-                    style={
-                      { '--suit-color': SUIT_COLOR[card.suit] ?? '#ccc' } as CSSProperties
-                    }
-                    onClick={() => handleCardClick(card)}
-                    title={`${displayCardName(card.name, card.damageType)} ${card.suit}${card.rank}`}
-                  >
-                    <div className={styles.cardName}>{displayCardName(card.name, card.damageType)}</div>
-                    <div className={styles.cardSuit}>
-                      {card.suit}
-                      {card.rank}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
         {/* 手牌区 */}
         <div className={styles.handList} ref={handListRef}>
           {orderedHand.map((card, i) => {

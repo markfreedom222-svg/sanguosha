@@ -49,7 +49,8 @@ export function onInit(skill: Skill, state: GameState): () => void {
       // giveCard(distribute/allocate):校验 allocation
       // 至多 2 名其他角色 + 共计至多 2 张手牌 + 每目标至少 1 张 + 牌均在手 + 无重复
       const allocation = params.allocation as Allocation | undefined;
-      if (!Array.isArray(allocation) || allocation.length === 0) {
+      if (Array.isArray(allocation) && allocation.length === 0) return null; // 取消交牌
+      if (!Array.isArray(allocation)) {
         return '请选择分配方案';
       }
       if (allocation.length > 2) return '至多交给两名其他角色';
@@ -137,6 +138,7 @@ export function onInit(skill: Skill, state: GameState): () => void {
           minTotal: 1,
           maxTotal: 2,
           allowSelf: false,
+          cancelLabel: '取消交牌',
           targetFilter: (_view, t) => t !== ownerId && ctx.state.players[t]?.alive === true,
         },
         timeout: 30,

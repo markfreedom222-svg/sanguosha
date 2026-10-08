@@ -133,6 +133,7 @@ describe('遗计', () => {
     expect(atom.type).toBe('请求回应');
     expect(atom.requestType).toBe('遗计/distribute');
     expect(atom.prompt?.cardIds).toEqual(['d2', 'd1']); // [top, secondFromTop]
+    expect(atom.prompt).toMatchObject({ allowSelf: true, minTotal: 2, maxTotal: 2, cancelLabel: '不发动' });
     // 关键:郭嘉手牌为空,牌堆顶两张仍在牌堆
     expect(harness.state.players[1].hand).toEqual([]);
     expect(harness.state.zones.deck).toEqual(['d1', 'd2']);

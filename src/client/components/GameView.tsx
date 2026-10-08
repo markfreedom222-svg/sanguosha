@@ -42,6 +42,7 @@ import { ZoneInfoBar, ZoneCornerCounts } from './ZoneInfoBar';
 import { HeaderToolbar } from './HeaderToolbar';
 import { CenterActionBar } from './CenterActionBar';
 import { HandArea } from './HandArea';
+import { DistributePromptPanel } from './DistributePromptPanel';
 import { CancelButton } from './CancelButton';
 import { EquipColumn } from './EquipColumn';
 import { InfoDock } from './InfoDock';
@@ -755,6 +756,8 @@ export function GameViewComponentImpl({
                           discardMax={discardMax}
                           selectedForDiscard={selectedForDiscard}
                         />
+
+                        {isDistributeActive && <DistributePromptPanel play={play} />}
 
                         {/* 倒计时条与 AwaitingPrompt 同步门控:翻牌动画期间不渲染,
                         动画结束后与 prompt 同时出现且为真实剩余时间。
